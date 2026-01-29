@@ -48,6 +48,9 @@ def analyze_image(image_ref: str):
         )
 
     base_image = extract_base_image(layers)
+    
+    # New: Enhanced runtime detection
+    runtime_info = detect_runtime(image, layers)
 
     return {
         "image": image_ref,
@@ -55,6 +58,7 @@ def analyze_image(image_ref: str):
         "layer_count": len(layers),
         "base_image": base_image,
         "layers": layers,
+        "runtime": runtime_info,
     }
 
 
@@ -88,6 +92,57 @@ def parse_size(size_str: str) -> float:
 
 def extract_base_image(layers):
     for layer in reversed(layers):
-        if "FROM" in layer["command"]:
-            return layer["command"].split("FROM")[-1].strip()
+        cmd = layer["command"]
+        if "FROM" in cmd:
+            return cmd.split("FROM")[-1].strip()
+        # Common pattern: NOP instruction often indicates base image layers in older docker versions
+        if "/bin/sh -c #(nop)" in cmd and "FROM" not in cmd:
+            continue
+    
+    # Fallback: check first layer if it looks like a base image setup
+    if layers:
+        first_cmd = layers[-1]["command"].lower()
+        if "bash" in first_cmd or "sh" in first_cmd or "add" in first_cmd:
+             return "detected_via_history"
+
+    return "unknown"
+
+
+def detect_runtime(image, layers):
+    """
+    Detect the likely runtime (Python, Node, Go, Java) based on:
+    1. Environment variables
+    2. Commands in layers
+    3. File system hits (if we were to explore, but here we stick to metadata)
+    """
+    config = image.attrs.get("Config", {})
+    env = config.get("Env", [])
+    env_str = " ".join(env).lower()
+    
+    all_cmds = " ".join([l["command"] for l in layers]).lower()
+    
+    # 1. Python
+    if any(x in env_str for x in ["python", "pip", "poetry"]):
+        return "python"
+    if any(x in all_cmds for x in ["python", "pip", "requirements.txt"]):
+        return "python"
+    
+    # 2. Node.js
+    if any(x in env_str for x in ["node", "npm", "yarn"]):
+        return "node"
+    if any(x in all_cmds for x in ["node", "npm", "yarn", "package.json"]):
+        return "node"
+    
+    # 3. Go
+    if "go1." in env_str or "gopath" in env_str:
+        return "go"
+    if "go build" in all_cmds:
+        return "go"
+    
+    # 4. Java
+    if any(x in env_str for x in ["java", "jvm", "openjdk", "jdk", "maven", "gradle"]):
+        return "java"
+    if any(x in all_cmds for x in ["java -jar", "javac", "mvn ", "gradle "]):
+        return "java"
+
     return "unknown"
