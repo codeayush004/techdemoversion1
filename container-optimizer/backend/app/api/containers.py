@@ -1,5 +1,8 @@
 from fastapi import APIRouter
-from app.core.report.report_builder import build_report
+from pydantic import BaseModel
+from typing import Optional
+from app.core.report.report_builder import build_report, build_static_report
+from app.core.ai_service import optimize_with_ai
 from app.docker.client import get_docker_client
 
 router = APIRouter()
@@ -37,6 +40,27 @@ def list_containers():
     return results
 
 
+
 @router.get("/image/report")
 def image_report(image: str):
     return build_report(image)
+
+
+class DockerfileRequest(BaseModel):
+    content: str
+
+
+
+@router.post("/analyze-dockerfile")
+def analyze_dockerfile(request: DockerfileRequest):
+    return build_static_report(request.content)
+
+
+class AIOptimizeRequest(BaseModel):
+    image_context: dict
+    dockerfile_content: Optional[str] = None
+
+
+@router.post("/ai-optimize")
+def ai_optimize(request: AIOptimizeRequest):
+    return optimize_with_ai(request.image_context, request.dockerfile_content)
