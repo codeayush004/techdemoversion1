@@ -1,7 +1,7 @@
 import re
 from app.core.image_analyzer import analyze_image
 from app.core.analyzers.runtime_analyzer import analyze_runtime
-from app.core.analyzers.security_analyzer import analyze_security
+from app.core.analyzers.security_analyzer import analyze_security, analyze_dockerfile_security
 from app.core.analyzers.misconfig_analyzer import analyze_misconfig
 from app.core.suggestors.dockerfile_suggestor import suggest_dockerfile
 from app.core.dockerfile_analyzer import analyze_dockerfile_content
@@ -45,24 +45,26 @@ def build_static_report(dockerfile_content: str):
     image_analysis = analyze_dockerfile_content(dockerfile_content)
     runtime = image_analysis["runtime_analysis"]
     
-    # Static analysis doesn't have security scan (Trivy) or real image info
-    security = {
-        "status": "skipped",
-        "total_vulnerabilities": 0,
-        "by_severity": {},
-        "vulnerabilities": []
-    }
+    # Run static security scan (Trivy config scan)
+    security = analyze_dockerfile_security(dockerfile_content)
     
     misconfigs = analyze_misconfig(image_analysis, runtime)
     
-    # Check for secrets in ENV/ARG statically
+    # Check for secrets in ENV/ARG statically (simple regex fallback)
     secrets = _detect_static_secrets(dockerfile_content)
+    # Filter out duplicates if Trivy already caught them
+    existing_messages = [m["message"] for m in misconfigs]
     for s in secrets:
-        misconfigs.append(s)
+        if s["message"] not in existing_messages:
+            misconfigs.append(s)
 
     dockerfile_suggestion = suggest_dockerfile(
         image_analysis, runtime, misconfigs
     )
+
+    findings = [m["message"] for m in misconfigs]
+    for v in security.get("vulnerabilities", []):
+        findings.append(f"Security Alert: {v['title']} ({v['severity']})")
 
     return {
         "image": "uploaded_dockerfile",
@@ -71,7 +73,7 @@ def build_static_report(dockerfile_content: str):
             "image_size_mb": 0,
             "layer_count": len(image_analysis["layers"]),
             "runs_as_root": runtime["runs_as_root"],
-            "security_scan_status": "skipped",
+            "security_scan_status": security["status"],
             "misconfiguration_count": len(misconfigs),
         },
         "image_analysis": image_analysis,
@@ -81,7 +83,7 @@ def build_static_report(dockerfile_content: str):
         "recommendation": {
             "dockerfile": dockerfile_suggestion
         },
-        "findings": [m["message"] for m in misconfigs],
+        "findings": findings,
     }
 
 def _detect_static_secrets(content: str):

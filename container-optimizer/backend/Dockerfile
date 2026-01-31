@@ -1,0 +1,4 @@
+FROM node:14
+ENV AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+USER root
+CMD ["node", "app.js"]

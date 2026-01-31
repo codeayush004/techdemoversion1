@@ -6,14 +6,17 @@ export default function ResultViewer({ result }: { result: any }) {
   const [loadingAi, setLoadingAi] = useState(false)
   const [showPaste, setShowPaste] = useState(false)
   const [pastedDockerfile, setPastedDockerfile] = useState("")
+  const [prStatus, setPrStatus] = useState<string | null>(null)
+  const [creatingPr, setCreatingPr] = useState(false)
 
   if (!result) return null
 
   const summary = result.summary ?? {}
   const misconfigs = result.misconfigurations ?? []
-  const recommendation = aiResult ? aiResult : result.recommendation?.dockerfile
+  const recommendation = aiResult || (result.is_github ? result : result.recommendation?.dockerfile)
   const isStatic = result.is_static === true
-  const isAi = !!aiResult
+  const isAi = !!aiResult || result.is_github === true
+  const isGithub = result.is_github === true
 
   const handleAiOptimize = async () => {
     setLoadingAi(true)
@@ -31,13 +34,33 @@ export default function ResultViewer({ result }: { result: any }) {
         },
         dockerfile_content: content || undefined
       }
-      const res = await axios.post("http://localhost:8000/api/ai-optimize", payload)
+      const res = await axios.post("http://127.0.0.1:8000/api/ai-optimize", payload)
       setAiResult(res.data)
     } catch (err) {
       console.error("AI Optimization failed", err)
       alert("Failed to get AI optimization. Check backend logs and GROQ_API_KEY.")
     } finally {
       setLoadingAi(false)
+    }
+  }
+
+  const handleCreatePr = async () => {
+    setCreatingPr(true)
+    try {
+      const payload = {
+        url: result.url || result.repo_url,
+        optimized_content: recommendation.optimized_dockerfile || recommendation.dockerfile,
+        path: result.path || "Dockerfile",
+        base_branch: result.branch || null
+      }
+      const res = await axios.post("http://127.0.0.1:8000/api/create-pr", payload)
+      setPrStatus(res.data.message)
+    } catch (err: any) {
+      console.error("PR creation failed", err)
+      const msg = err.response?.data?.detail || "Failed to create PR"
+      alert(msg)
+    } finally {
+      setCreatingPr(false)
     }
   }
 
@@ -57,8 +80,8 @@ export default function ResultViewer({ result }: { result: any }) {
         />
         <Stat
           title="Security Status"
-          value={isAi ? "AI VERIFIED" : (isStatic ? "STATIC SCAN" : (summary.security_scan_status ?? "unknown").toUpperCase())}
-          danger={!isStatic && !isAi && summary.security_scan_status !== "ok"}
+          value={isAi ? "AI VERIFIED" : (summary.security_scan_status ?? "unknown").toUpperCase()}
+          danger={summary.security_scan_status !== "ok"}
           highlight={isAi}
         />
       </section>
@@ -134,16 +157,28 @@ export default function ResultViewer({ result }: { result: any }) {
         </div>
       )}
 
-      {/* Security Warnings (AI Only) */}
-      {isAi && aiResult.security_warnings && aiResult.security_warnings.length > 0 && (
+      {/* Security Warnings (Trivy or AI) */}
+      {(recommendation?.security_warnings || (result.security_analysis?.vulnerabilities?.length > 0)) && (
         <section className="animate-in zoom-in-95 duration-300">
           <h2 className="text-xl font-bold mb-4 text-red-400 flex items-center gap-2">
-            ⚠️ AI Security Alerts
+            ⚠️ Security Alerts Detected
           </h2>
           <div className="grid grid-cols-2 gap-3">
-            {aiResult.security_warnings.map((w: string, i: number) => (
-              <div key={i} className="bg-red-950/30 border border-red-500/50 p-4 rounded-xl text-red-200 text-sm italic shadow-lg shadow-red-900/10">
-                {w}
+            {/* AI Warnings */}
+            {recommendation?.security_warnings?.map((w: string, i: number) => (
+              <div key={`ai-${i}`} className="bg-red-950/30 border border-red-500/50 p-4 rounded-xl text-red-200 text-sm italic shadow-lg shadow-red-900/10">
+                <span className="font-bold mr-2 text-xs opacity-60">AI:</span> {w}
+              </div>
+            ))}
+            {/* Trivy Warnings */}
+            {result.security_analysis?.vulnerabilities?.map((v: any, i: number) => (
+              <div key={`trivy-${i}`} className="bg-zinc-900/50 border border-red-500/30 p-4 rounded-xl text-zinc-200 text-sm shadow-lg">
+                <div className="flex justify-between items-start mb-1">
+                  <span className="font-bold text-red-400 text-xs">{v.severity || "HIGH"}</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">{v.id}</span>
+                </div>
+                <p className="font-semibold text-xs mb-1">{v.title}</p>
+                {v.resolution && <p className="text-[10px] text-green-400/80 mt-1">Fix: {v.resolution}</p>}
               </div>
             ))}
           </div>
@@ -158,6 +193,23 @@ export default function ResultViewer({ result }: { result: any }) {
               <span className="animate-pulse">✨</span> AI Recommended Architecture
             </span>
           ) : "Suggested Optimizations"}
+          {isGithub && (
+            <div className="ml-auto flex items-center gap-4">
+              {prStatus ? (
+                <span className="text-sm text-green-400 font-bold bg-green-900/20 px-4 py-2 rounded-xl border border-green-500/30">
+                  ✅ {prStatus}
+                </span>
+              ) : (
+                <button
+                  onClick={handleCreatePr}
+                  disabled={creatingPr}
+                  className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-green-500/20 disabled:opacity-50 flex items-center gap-2 text-sm"
+                >
+                  {creatingPr ? "Creating..." : "Create Pull Request"}
+                </button>
+              )}
+            </div>
+          )}
         </h2>
 
         {!recommendation ? (
@@ -257,10 +309,10 @@ function Stat({
   return (
     <div
       className={`p-6 rounded-2xl border transition-all duration-500 ${highlight
-          ? "border-indigo-500 bg-indigo-950/40 shadow-lg shadow-indigo-500/10 scale-[1.02]"
-          : danger
-            ? "border-red-600 bg-red-950/20"
-            : "border-zinc-800 bg-zinc-900"
+        ? "border-indigo-500 bg-indigo-950/40 shadow-lg shadow-indigo-500/10 scale-[1.02]"
+        : danger
+          ? "border-red-600 bg-red-950/20"
+          : "border-zinc-800 bg-zinc-900"
         }`}
     >
       <div className={`text-xs uppercase tracking-wider font-bold mb-1 ${highlight ? "text-indigo-400" : "text-zinc-500"}`}>{title}</div>
@@ -273,8 +325,8 @@ function MisconfigCard({ m }: { m: any }) {
   return (
     <div
       className={`p-4 rounded-xl border transition-all hover:translate-x-1 ${m.severity === "HIGH"
-          ? "border-red-600 bg-red-950/20"
-          : "border-yellow-600 bg-yellow-950/20"
+        ? "border-red-600 bg-red-950/20"
+        : "border-yellow-600 bg-yellow-950/20"
         }`}
     >
       <div className="flex justify-between items-start">

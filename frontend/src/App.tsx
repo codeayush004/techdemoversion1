@@ -3,15 +3,16 @@ import ContainerTable from "./components/ContainerTable"
 import ActionPanel from "./components/ActionPanel"
 import ResultViewer from "./components/ResultViewer"
 import DockerfileUpload from "./components/DockerfileUpload"
+import GitHubScanner from "./components/GitHubScanner"
 import type { Container } from "./types"
 
 export default function App() {
   const [selected, setSelected] = useState<Container | null>(null)
   const [result, setResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
-  const [view, setView] = useState<"runtime" | "static">("runtime")
+  const [view, setView] = useState<"runtime" | "static" | "github">("runtime")
 
-  const handleViewChange = (newView: "runtime" | "static") => {
+  const handleViewChange = (newView: "runtime" | "static" | "github") => {
     setView(newView)
     setResult(null)
     setSelected(null)
@@ -38,6 +39,12 @@ export default function App() {
           >
             Optimize Dockerfile
           </button>
+          <button
+            onClick={() => handleViewChange("github")}
+            className={`px-4 py-2 rounded-md transition-all ${view === "github" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"}`}
+          >
+            GitHub Scan
+          </button>
         </div>
       </header>
 
@@ -54,8 +61,10 @@ export default function App() {
             setLoading={setLoading}
           />
         </section>
-      ) : (
+      ) : view === "static" ? (
         <DockerfileUpload onResult={setResult} setLoading={setLoading} />
+      ) : (
+        <GitHubScanner onResult={setResult} setLoading={setLoading} />
       )}
 
       {loading && (

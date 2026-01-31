@@ -37,3 +37,41 @@ def scan_image(image_name: str):
 
         with open(output_file) as f:
             return json.load(f)
+
+def scan_dockerfile(content: str):
+    """
+    Run Trivy config scan on Dockerfile content.
+    Returns parsed JSON findings.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        df_path = f"{tmp}/Dockerfile"
+        output_file = f"{tmp}/result.json"
+        
+        with open(df_path, "w") as f:
+            f.write(content)
+
+        cmd = [
+            "trivy",
+            "config",
+            "--scanners",
+            "misconfig,secret",
+            "--format",
+            "json",
+            "--output",
+            output_file,
+            df_path,
+        ]
+
+        try:
+            subprocess.run(
+                cmd,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError:
+            # If scan fails, return empty findings
+            return {"Results": []}
+
+        with open(output_file) as f:
+            return json.load(f)

@@ -21,7 +21,7 @@ export default function DockerfileUpload({ onResult, setLoading }: { onResult: (
         if (!text.trim()) return
         setLoading(true)
         try {
-            const res = await axios.post("http://localhost:8000/api/analyze-dockerfile", { content: text })
+            const res = await axios.post("http://127.0.0.1:8000/api/analyze-dockerfile", { content: text })
             onResult(res.data)
         } catch (err) {
             console.error("Optimization failed", err)

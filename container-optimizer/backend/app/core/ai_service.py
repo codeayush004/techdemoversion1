@@ -29,12 +29,14 @@ Misconfigurations Found: {json.dumps(image_context.get('misconfigurations', []),
 
 ### REQUIREMENTS:
 1. Use MULTI-STAGE builds where appropriate.
+   - CRITICAL for Python: If using multi-stage, dependencies installed in the build stage MUST be available in the final stage. Use a virtual environment (venv) in `/opt/venv` and copy it, or use `--user` and copy `.local`.
 2. Use minimal base images (slim, alpine, distroless).
 3. NEVER run as root. Create and use a non-root user.
 4. Add a HEALTHCHECK.
 5. Identify and fix security risks (like volume-mounted docker sockets, exposed secrets, etc.).
 6. Use modern BuildKit features like --mount=type=cache where applicable.
 7. Provide a DETAILED explanation for every change made.
+8. Ensure the Dockerfile is FUNCTIONAL. Don't skip copying dependencies if the runtime needs them.
 
 ### OUTPUT FORMAT:
 Your response must be a VALID JSON object with the following keys:
