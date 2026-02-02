@@ -1,95 +1,123 @@
 def analyze_misconfig(image_analysis: dict, runtime_analysis: dict):
     """
     Detect Docker image misconfigurations and bad practices.
-    Reference: CIS Docker Benchmark, Docker Best Practices.
     """
     issues = []
+    layers = image_analysis.get("layers", [])
+
+    def _get_clean_cmd(l):
+        cmd = (l.get("command") or "").lower()
+        return cmd.replace("#(nop)", "").strip()
 
     # 1. Root user
     if runtime_analysis.get("runs_as_root"):
         issues.append({
-            "id": "RUNS_AS_ROOT",
+            "id": "RUN_AS_ROOT",
             "severity": "HIGH",
             "message": "Container runs as root user",
             "recommendation": "Add a non-root USER in the Dockerfile."
         })
 
-    # 2. Large base image
+    # 2. Heavy base image
     base_image = image_analysis.get("base_image", "")
     if any(x in base_image.lower() for x in ["ubuntu", "debian", "fedora", "centos"]) and "slim" not in base_image.lower():
         issues.append({
             "id": "HEAVY_BASE_IMAGE",
             "severity": "MEDIUM",
             "message": f"Heavy base image detected ({base_image})",
-            "recommendation": "Use slim or alpine base images where possible."
+            "recommendation": "Use slim or alpine base images."
         })
 
-    # 3. Large layers → likely no multi-stage
-    large_layers = [
-        l for l in image_analysis.get("layers", [])
-        if l.get("is_large")
-    ]
+    # 3. Multi-stage detection (static only check)
+    if image_analysis.get("is_static"):
+        stages = image_analysis.get("stages", [])
+        if len(stages) < 2:
+            issues.append({
+                "id": "SINGLE_STAGE",
+                "severity": "LOW",
+                "message": "Single stage build detected",
+                "recommendation": "Consider multi-stage builds to reduce image size."
+            })
 
-    if large_layers:
-        issues.append({
-            "id": "NO_MULTI_STAGE",
-            "severity": "HIGH",
-            "message": "Large build layers detected in final image",
-            "recommendation": "Use multi-stage builds to exclude build dependencies."
-        })
+    # 4. Large layers (runtime only check)
+    if not image_analysis.get("is_static"):
+        large_layers = [l for l in layers if l.get("is_large")]
+        if large_layers:
+            issues.append({
+                "id": "NO_MULTI_STAGE",
+                "severity": "HIGH",
+                "message": "Large build layers detected in final image",
+                "recommendation": "Use multi-stage builds to exclude build tools."
+            })
 
-    # 4. Build tools in final image
-    for layer in image_analysis.get("layers", []):
-        cmd = (layer.get("command") or "").lower()
-        if any(pkg in cmd for pkg in ["gcc", "build-essential", "make", "git", "curl"]):
-            # Ignore curl if it's the only one, might be for healthcheck
-            if "curl" in cmd and not any(pkg in cmd for pkg in ["gcc", "make", "git"]):
-                continue
+    # 5. Build tools & Docker socket EXTREME risk
+    docker_socket_risk = False
+    for layer in layers:
+        cmd = _get_clean_cmd(layer)
+        
+        # Check for docker.sock mount in VOLUME or ENV
+        if "/var/run/docker.sock" in cmd:
+            docker_socket_risk = True
+            
+        if any(pkg in cmd for pkg in ["gcc", "build-essential", "make", "git"]) and not "curl" in cmd:
             issues.append({
                 "id": "BUILD_TOOLS_PRESENT",
                 "severity": "HIGH",
-                "message": "Build tools or dev utilities present in final image",
+                "message": "Build tools present in final image",
                 "recommendation": "Install build tools only in builder stage."
             })
             break
 
-    # 5. COPY . /
-    for layer in image_analysis.get("layers", []):
-        if "copy . " in (layer.get("command") or "").lower():
+    if docker_socket_risk:
+        issues.append({
+            "id": "DOCKER_SOCKET_MOUNT",
+            "severity": "HIGH",
+            "message": "Exposure of /var/run/docker.sock detected",
+            "recommendation": "NEVER mount the Docker socket inside a container. This is an extreme security risk."
+        })
+
+    # 6. COPY . /
+    for layer in layers:
+        cmd = _get_clean_cmd(layer)
+        if "copy . " in cmd and "copy . . " not in cmd: # Basic check
             issues.append({
                 "id": "COPY_ALL",
                 "severity": "MEDIUM",
-                "message": "COPY . / used (large build context)",
-                "recommendation": "Use .dockerignore and copy only required files."
+                "message": "COPY . / used (potential large context)",
+                "recommendation": "Use .dockerignore and copy individual files."
             })
             break
 
-    # 6. Missing HEALTHCHECK (New)
-    has_healthcheck = any(
-        "healthcheck" in (l.get("command") or "").lower()
-        for l in image_analysis.get("layers", [])
-    )
+    # 7. Missing HEALTHCHECK
+    has_healthcheck = any("healthcheck" in _get_clean_cmd(l) for l in layers)
     if not has_healthcheck:
         issues.append({
             "id": "MISSING_HEALTHCHECK",
             "severity": "LOW",
             "message": "No HEALTHCHECK instruction found",
-            "recommendation": "Add a HEALTHCHECK to monitor container liveness."
+            "recommendation": "Add a HEALTHCHECK for liveness monitoring."
         })
 
-    # 7. Shell form in CMD/ENTRYPOINT (New)
-    for layer in image_analysis.get("layers", []):
-        cmd = (layer.get("command") or "").lower()
-        if ("/bin/sh -c" in cmd) and ("cmd [" not in cmd and "entrypoint [" not in cmd) and ("#(nop) cmd" in cmd or "#(nop) entrypoint" in cmd):
-             issues.append({
-                "id": "SHELL_FORM_COMMAND",
-                "severity": "MEDIUM",
-                "message": "CMD or ENTRYPOINT uses shell form",
-                "recommendation": "Use the JSON form ['executable', 'param1', 'param2'] to avoid shell overhead and correctly handle signals."
-            })
-             break
+    # 8. Excessive EXPOSE range
+    for layer in layers:
+        cmd = _get_clean_cmd(layer)
+        if "expose" in cmd:
+            if "-" in cmd:
+                parts = cmd.split()
+                for p in parts:
+                    if "-" in p:
+                        try:
+                            start, end = map(int, p.split("-"))
+                            if end - start > 100:
+                                issues.append({
+                                    "id": "EXCESSIVE_EXPOSE",
+                                    "severity": "MEDIUM",
+                                    "message": f"Excessive port range exposed: {p}",
+                                    "recommendation": "Expose only the specific ports your application needs."
+                                })
+                        except ValueError: continue
 
-    # 8. Version pinning (New)
+    # 9. Version pinning
     if "latest" in base_image.lower() or ":" not in base_image:
         issues.append({
             "id": "NO_VERSION_PINNING",

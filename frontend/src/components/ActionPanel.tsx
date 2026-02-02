@@ -16,16 +16,13 @@ export default function ActionPanel({
   if (!container) return null
 
   async function run() {
+    if (!container) return
     try {
       setLoading(true)
-
-      const res = await axios.get(
+      const res = await axios.post(
         `${API}/image/report`,
-        {
-          params: { image: container.image },
-        }
+        { image: container.image }
       )
-
       onResult(res.data)
     } catch (err) {
       console.error("Analysis failed", err)

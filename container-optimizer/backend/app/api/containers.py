@@ -4,7 +4,7 @@ from typing import Optional
 from app.core.report.report_builder import build_report, build_static_report
 from app.core.ai_service import optimize_with_ai
 from app.docker.client import get_docker_client
-from app.core.github_service import extract_repo_info, find_dockerfile, get_file_content, create_pull_request, full_pr_workflow
+from app.core.github_service import extract_repo_info, find_dockerfile, get_file_content, full_pr_workflow
 from fastapi import HTTPException
 import requests
 
@@ -37,16 +37,20 @@ def list_containers():
                 "memory_usage_mb": memory_usage_mb,
             })
 
-        except Exception as e:
-            print(f"[containers] failed for {c.name}: {e}")
+        except Exception:
+            pass
 
     return results
 
 
 
-@router.get("/image/report")
-def image_report(image: str):
-    return build_report(image)
+class RuntimeScanRequest(BaseModel):
+    image: str
+    dockerfile_content: Optional[str] = None
+
+@router.post("/image/report")
+def image_report(request: RuntimeScanRequest):
+    return build_report(request.image, request.dockerfile_content)
 
 
 class DockerfileRequest(BaseModel):
@@ -59,14 +63,6 @@ def analyze_dockerfile(request: DockerfileRequest):
     return build_static_report(request.content)
 
 
-class AIOptimizeRequest(BaseModel):
-    image_context: dict
-    dockerfile_content: Optional[str] = None
-
-
-@router.post("/ai-optimize")
-def ai_optimize(request: AIOptimizeRequest):
-    return optimize_with_ai(request.image_context, request.dockerfile_content)
 
 
 class GitHubScanRequest(BaseModel):
@@ -101,8 +97,9 @@ def scan_github(request: GitHubScanRequest):
     })
     
     # Ensure ResultViewer can find the AI result
-    if "recommendation" in report and "dockerfile" in report["recommendation"]:
-        report["optimization"] = report["recommendation"]["dockerfile"]
+    if "recommendation" in report:
+        rec = report["recommendation"]
+        report["optimization"] = rec.get("optimized_dockerfile") or rec.get("dockerfile")
     
     return report
 
@@ -129,15 +126,5 @@ def create_pr(request: CreatePRRequest):
             base_branch=request.base_branch
         )
         return {"message": f"Successfully created PR: {pr_link}" if "github.com" in pr_link else pr_link}
-    except requests.exceptions.HTTPError as e:
-        error_data = {}
-        try:
-            error_data = e.response.json()
-        except:
-            pass
-        msg = error_data.get("message", str(e))
-        print(f"GitHub API Error: {msg}")
-        raise HTTPException(status_code=400, detail=f"GitHub Error: {msg}")
     except Exception as e:
-        print(f"PR Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

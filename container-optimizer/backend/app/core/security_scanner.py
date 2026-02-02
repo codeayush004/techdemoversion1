@@ -29,10 +29,11 @@ def scan_image(image_name: str):
                 check=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                timeout=60 # Prevent hangs
             )
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             raise RuntimeError(
-                "Trivy scan failed. Ensure Docker API compatibility and permissions."
+                "Trivy scan failed or timed out. Ensure Trivy is installed and working."
             )
 
         with open(output_file) as f:
@@ -68,8 +69,9 @@ def scan_dockerfile(content: str):
                 check=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                timeout=30 # Faster for config scan
             )
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             # If scan fails, return empty findings
             return {"Results": []}
 

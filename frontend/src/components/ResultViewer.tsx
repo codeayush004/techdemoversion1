@@ -2,45 +2,40 @@ import { useState } from "react"
 import axios from "axios"
 
 export default function ResultViewer({ result }: { result: any }) {
-  const [aiResult, setAiResult] = useState<any>(null)
-  const [loadingAi, setLoadingAi] = useState(false)
   const [showPaste, setShowPaste] = useState(false)
   const [pastedDockerfile, setPastedDockerfile] = useState("")
   const [prStatus, setPrStatus] = useState<string | null>(null)
   const [creatingPr, setCreatingPr] = useState(false)
+  const [loadingRefine, setLoadingRefine] = useState(false)
+  const [refinedResult, setRefinedResult] = useState<any>(null)
 
   if (!result) return null
 
-  const summary = result.summary ?? {}
-  const misconfigs = result.misconfigurations ?? []
-  const recommendation = aiResult || (result.is_github ? result : result.recommendation?.dockerfile)
-  const isStatic = result.is_static === true
-  const isAi = !!aiResult || result.is_github === true
-  const isGithub = result.is_github === true
+  // Use refined result if available, otherwise original result
+  const currentResult = refinedResult || result
+  const summary = currentResult.summary ?? {}
+  const recommendation = currentResult.recommendation ?? {}
 
-  const handleAiOptimize = async () => {
-    setLoadingAi(true)
+  const isStatic = currentResult.is_static === true
+  const isGithub = !!currentResult.owner && !!currentResult.repo // Detected from metadata
+  const isAi = true // Now always enabled by default
+
+  const handleRefineRuntime = async () => {
+    if (!pastedDockerfile.trim()) return
+    setLoadingRefine(true)
     try {
-      // Use pasted content if available, otherwise fallback to static analysis layers or null
-      let content = pastedDockerfile.trim() || null
-      if (!content && result.is_static) {
-        content = result.image_analysis?.layers?.map((l: any) => l.command).join("\n")
-      }
-
       const payload = {
-        image_context: {
-          ...result,
-          // Truncate large metadata if necessary, but keep misconfigs and summary
-        },
-        dockerfile_content: content || undefined
+        image: currentResult.image,
+        dockerfile_content: pastedDockerfile
       }
-      const res = await axios.post("http://127.0.0.1:8000/api/ai-optimize", payload)
-      setAiResult(res.data)
+      const res = await axios.post("http://127.0.0.1:8000/api/image/report", payload)
+      setRefinedResult(res.data)
+      setShowPaste(false)
     } catch (err) {
-      console.error("AI Optimization failed", err)
-      alert("Failed to get AI optimization. Check backend logs and GROQ_API_KEY.")
+      console.error("Refinement failed", err)
+      alert("Failed to refine optimization. Check backend logs.")
     } finally {
-      setLoadingAi(false)
+      setLoadingRefine(false)
     }
   }
 
@@ -48,10 +43,10 @@ export default function ResultViewer({ result }: { result: any }) {
     setCreatingPr(true)
     try {
       const payload = {
-        url: result.url || result.repo_url,
+        url: currentResult.url || currentResult.repo_url,
         optimized_content: recommendation.optimized_dockerfile || recommendation.dockerfile,
-        path: result.path || "Dockerfile",
-        base_branch: result.branch || null
+        path: currentResult.path || "Dockerfile",
+        base_branch: currentResult.branch || null
       }
       const res = await axios.post("http://127.0.0.1:8000/api/create-pr", payload)
       setPrStatus(res.data.message)
@@ -80,74 +75,53 @@ export default function ResultViewer({ result }: { result: any }) {
         />
         <Stat
           title="Security Status"
-          value={isAi ? "AI VERIFIED" : (summary.security_scan_status ?? "unknown").toUpperCase()}
+          value={(summary.security_scan_status ?? "unknown").toUpperCase()}
           danger={summary.security_scan_status !== "ok"}
-          highlight={isAi}
+          highlight={true}
         />
       </section>
 
-      {/* AI CTA */}
-      {!isAi && (
-        <div className="bg-gradient-to-r from-indigo-900/40 to-blue-900/40 border border-indigo-500/30 p-8 rounded-2xl">
-          <div className="flex items-center justify-between mb-6">
-            <div className="max-w-xl">
-              <h3 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
-                ✨ Deep Optimization with AI
+      {/* Refinement Section for Runtime Scans */}
+      {!isStatic && !isGithub && (
+        <div className="bg-zinc-900/40 border border-zinc-800 p-6 rounded-2xl">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h3 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
+                🎯 Refine with Dockerfile
               </h3>
-              <p className="text-zinc-300">
-                Upgrade this scan with specialized Groq AI analysis. AI understands multi-stage builds,
-                complex package managers, and subtle security risks that standard scanners miss.
+              <p className="text-sm text-zinc-400">
+                Provide your original Dockerfile for more precise AI recommendations.
               </p>
             </div>
             {!showPaste && (
               <button
-                onClick={handleAiOptimize}
-                disabled={loadingAi}
-                className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-xl shadow-indigo-500/20 disabled:opacity-50 flex items-center gap-3 text-lg"
+                onClick={() => setShowPaste(true)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm font-bold transition-all"
               >
-                {loadingAi ? (
-                  <>
-                    <div className="w-5 h-5 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Engine Booting...
-                  </>
-                ) : (
-                  "Optimize with AI"
-                )}
+                Add Dockerfile
               </button>
             )}
           </div>
 
-          {!isStatic && !showPaste && (
-            <button
-              onClick={() => setShowPaste(true)}
-              className="text-sm text-indigo-300 hover:text-indigo-200 underline decoration-indigo-500/50 underline-offset-4"
-            >
-              Paste original Dockerfile for more accurate context
-            </button>
-          )}
-
           {showPaste && (
-            <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
-              <label className="block text-sm font-medium text-zinc-300">
-                Original Dockerfile Content (Optional but Recommended)
-              </label>
+            <div className="mt-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
               <textarea
                 value={pastedDockerfile}
                 onChange={(e) => setPastedDockerfile(e.target.value)}
-                className="w-full h-48 bg-black/50 border border-zinc-700 rounded-lg p-4 font-mono text-sm text-zinc-300 focus:border-indigo-500 outline-none transition-colors"
-                placeholder="# Paste your Dockerfile here for a perfect optimization..."
+                className="w-full h-40 bg-black/50 border border-zinc-700 rounded-lg p-4 font-mono text-sm text-zinc-300 focus:border-blue-500 outline-none transition-colors"
+                placeholder="# Paste your Dockerfile for runtime container..."
               />
               <div className="flex gap-4">
                 <button
-                  onClick={handleAiOptimize}
-                  disabled={loadingAi}
-                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold transition-all disabled:opacity-50"
+                  onClick={handleRefineRuntime}
+                  disabled={loadingRefine}
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-all disabled:opacity-50"
                 >
-                  {loadingAi ? "Analyzing..." : "Confirm & Optimize"}
+                  {loadingRefine ? "Refining..." : "Refine Optimization"}
                 </button>
                 <button
                   onClick={() => setShowPaste(false)}
-                  className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-bold transition-all"
+                  className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-bold transition-all"
                 >
                   Cancel
                 </button>
@@ -157,37 +131,47 @@ export default function ResultViewer({ result }: { result: any }) {
         </div>
       )}
 
-      {/* Security Warnings (Trivy or AI) */}
-      {(recommendation?.security_warnings || (result.security_analysis?.vulnerabilities?.length > 0)) && (
-        <section className="animate-in zoom-in-95 duration-300">
-          <h2 className="text-xl font-bold mb-4 text-red-400 flex items-center gap-2">
-            ⚠️ Security Alerts Detected
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            {/* AI Warnings */}
-            {recommendation?.security_warnings?.map((w: string, i: number) => (
-              <div key={`ai-${i}`} className="bg-red-950/30 border border-red-500/50 p-4 rounded-xl text-red-200 text-sm italic shadow-lg shadow-red-900/10">
-                <span className="font-bold mr-2 text-xs opacity-60">AI:</span> {w}
-              </div>
-            ))}
-            {/* Trivy Warnings */}
-            {result.security_analysis?.vulnerabilities?.map((v: any, i: number) => (
-              <div key={`trivy-${i}`} className="bg-zinc-900/50 border border-red-500/30 p-4 rounded-xl text-zinc-200 text-sm shadow-lg">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-bold text-red-400 text-xs">{v.severity || "HIGH"}</span>
-                  <span className="text-[10px] text-zinc-500 font-mono">{v.id}</span>
+      {/* Unified Smart Analysis */}
+      <section className="animate-in zoom-in-95 duration-500">
+        <h2 className="text-xl font-bold mb-6 text-zinc-100 flex items-center gap-2">
+          🔍 Unified Optimization Analysis
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(currentResult.findings || []).map((f: any, i: number) => (
+            <div key={i} className={`p-4 rounded-xl border transition-all hover:bg-zinc-800/20 ${f.severity === 'HIGH' || f.severity === 'CRITICAL'
+                ? 'border-red-900/50 bg-red-950/10'
+                : 'border-zinc-800 bg-zinc-900/50'
+              }`}>
+              <div className="flex justify-between items-start mb-2">
+                <div className="flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full ${f.category === 'SECURITY' ? 'bg-red-400' : 'bg-indigo-400'
+                    }`} />
+                  <span className="text-sm font-bold text-zinc-100">{f.message}</span>
                 </div>
-                <p className="font-semibold text-xs mb-1">{v.title}</p>
-                {v.resolution && <p className="text-[10px] text-green-400/80 mt-1">Fix: {v.resolution}</p>}
+                <span className={`text-[8px] px-2 py-0.5 rounded-full font-black ${f.severity === 'HIGH' || f.severity === 'CRITICAL' ? 'bg-red-600' : 'bg-zinc-700'
+                  } text-white`}>
+                  {f.severity}
+                </span>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+              {f.recommendation && (
+                <p className="text-xs text-zinc-400 leading-relaxed border-t border-zinc-800/50 pt-2 mt-2">
+                  <span className="font-bold text-zinc-500 mr-1 italic">Resolution:</span> {f.recommendation}
+                </p>
+              )}
+            </div>
+          ))}
+          {(currentResult.findings || []).length === 0 && (
+            <div className="col-span-2 text-center py-10 border border-dashed border-zinc-800 rounded-2xl text-zinc-500 text-sm">
+              No critical issues detected. Your image is optimized!
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Dockerfile Recommendation */}
       <section>
-        <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-zinc-100">
+        <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-zinc-100 mt-12">
           {isAi ? (
             <span className="flex items-center gap-2 text-indigo-400">
               <span className="animate-pulse">✨</span> AI Recommended Architecture
@@ -217,7 +201,7 @@ export default function ResultViewer({ result }: { result: any }) {
             No recommendation available.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-8 text-zinc-200">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 text-zinc-200">
             <div className="space-y-6">
               <DockerfileBlock
                 title="Optimized Dockerfile"
@@ -231,9 +215,9 @@ export default function ResultViewer({ result }: { result: any }) {
               )}
             </div>
 
-            <div className="space-y-6">
-              <div className={`p-6 rounded-2xl h-fit border transition-all duration-500 ${isAi ? "bg-indigo-950/30 border-indigo-500/40 shadow-xl shadow-indigo-500/5" : "bg-zinc-900 border-zinc-800"}`}>
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-zinc-100 border-b border-zinc-700 pb-2">
+            <div className="space-y-6 h-full flex flex-col">
+              <div className={`p-6 rounded-2xl h-fit border transition-all duration-500 flex-1 ${isAi ? "bg-indigo-950/30 border-indigo-500/40 shadow-xl shadow-indigo-500/5" : "bg-zinc-900 border-zinc-800"}`}>
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-zinc-100 border-b border-zinc-700/50 pb-2">
                   {isAi ? "🤖 AI Reasoning" : "Optimization Explanation"}
                 </h3>
 
@@ -253,38 +237,11 @@ export default function ResultViewer({ result }: { result: any }) {
                 )}
 
                 {isAi && (
-                  <div className="mt-8 pt-4 border-t border-indigo-500/20 text-[10px] text-indigo-300/60 uppercase tracking-widest text-center font-bold">
-                    Powered by Groq • Llama-3-70B • Real-time Analysis
+                  <div className="mt-auto pt-8 text-[10px] text-indigo-300/60 uppercase tracking-widest text-center font-bold">
+                    Powered by Groq • GPT-OSS-120B • Industry Verified
                   </div>
                 )}
               </div>
-
-              {!isAi && (
-                <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl">
-                  <h3 className="font-bold mb-3">Initial Scan Findings</h3>
-                  {misconfigs.length === 0 ? (
-                    <p className="text-sm opacity-70">
-                      No critical misconfigurations detected in initial scan.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {misconfigs.map((m: any, i: number) => (
-                        <MisconfigCard key={i} m={m} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {isStatic && !isAi && (
-                <div className="bg-zinc-800/30 p-6 rounded-2xl text-xs text-zinc-400 border border-zinc-700/50">
-                  <p className="font-semibold mb-1 text-zinc-300">Note on Static Analysis</p>
-                  <p>
-                    Static analysis scans for patterns like exposed keys and root usage.
-                    For library security scanning, use a built image or use AI for a deeper semantic review.
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -321,26 +278,6 @@ function Stat({
   )
 }
 
-function MisconfigCard({ m }: { m: any }) {
-  return (
-    <div
-      className={`p-4 rounded-xl border transition-all hover:translate-x-1 ${m.severity === "HIGH"
-        ? "border-red-600 bg-red-950/20"
-        : "border-yellow-600 bg-yellow-950/20"
-        }`}
-    >
-      <div className="flex justify-between items-start">
-        <span className="font-bold text-zinc-200 text-sm">{m.message}</span>
-        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black tracking-tighter ${m.severity === 'HIGH' ? 'bg-red-600' : 'bg-yellow-600'} text-white`}>
-          {m.severity}
-        </span>
-      </div>
-      <p className="text-xs opacity-80 mt-2 text-zinc-400 leading-tight">
-        {m.recommendation}
-      </p>
-    </div>
-  )
-}
 
 function DockerfileBlock({
   title,

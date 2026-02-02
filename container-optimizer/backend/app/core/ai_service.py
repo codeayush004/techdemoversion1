@@ -27,17 +27,6 @@ Misconfigurations Found: {json.dumps(image_context.get('misconfigurations', []),
 ### ORIGINAL DOCKERFILE CONTENT (If provided):
 {dockerfile_content or "Not provided. Use image metadata and misconfigurations above."}
 
-### REQUIREMENTS:
-1. Use MULTI-STAGE builds where appropriate.
-   - CRITICAL for Python: If using multi-stage, dependencies installed in the build stage MUST be available in the final stage. Use a virtual environment (venv) in `/opt/venv` and copy it, or use `--user` and copy `.local`.
-2. Use minimal base images (slim, alpine, distroless).
-3. NEVER run as root. Create and use a non-root user.
-4. Add a HEALTHCHECK.
-5. Identify and fix security risks (like volume-mounted docker sockets, exposed secrets, etc.).
-6. Use modern BuildKit features like --mount=type=cache where applicable.
-7. Provide a DETAILED explanation for every change made.
-8. Ensure the Dockerfile is FUNCTIONAL. Don't skip copying dependencies if the runtime needs them.
-
 ### OUTPUT FORMAT:
 Your response must be a VALID JSON object with the following keys:
 - "optimized_dockerfile": The complete string of the new Dockerfile.
@@ -53,13 +42,28 @@ DO NOT include any conversation or markdown outside the JSON object.
         "Content-Type": "application/json"
     }
 
+    system_message = """You are a specialized Docker Optimization AI. You ONLY output valid JSON.
+CRITICAL MANDATES for logic accuracy:
+1. TRUTHFULNESS: 
+   - NEVER suggest a tool (curl, wget, ping) in a CMD or HEALTHCHECK unless you explicitly install it in the SAME stage using a package manager (apt/apk).
+   - NEVER assume files exist unless shown in the original Dockerfile or build commands.
+2. CONSISTENCY:
+   - Match the base image family (Debian/Ubuntu vs Alpine). If the original is Debian, the optimized version MUST stay Debian-based (use -slim or -bookworm).
+   - Use `python:3.11-slim-bookworm` (Debian) or `python:3.11-alpine` (Alpine). 
+3. EXPERT REASONING:
+   - Your 'explanation' must provide technical 'Why' (e.g., "Reduced image size by 40% using multi-stage builds and excluding build-time dependencies like gcc").
+4. SECURITY:
+   - Always implement a non-root USER with proper permissions.
+   - Use fixed tags. NEVER use 'latest'.
+"""
+
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "messages": [
-            {"role": "system", "content": "You are a specialized Docker Optimization AI. You only output valid JSON."},
+            {"role": "system", "content": system_message},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.2,
+        "temperature": 0.1,
         "response_format": {"type": "json_object"}
     }
 
