@@ -38,9 +38,38 @@ def get_headers():
         headers["Authorization"] = f"token {token}"
     return headers
 
+def find_all_dockerfiles(owner: str, repo: str) -> list[str]:
+    """
+    Recursively searches for all Dockerfiles in a repository using the Trees API.
+    Returns a list of paths.
+    """
+    # 1. Get the default branch and its latest commit SHA
+    repo_url = f"https://api.github.com/repos/{owner}/{repo}"
+    repo_resp = requests.get(repo_url, headers=get_headers())
+    if repo_resp.status_code != 200:
+        return []
+    
+    default_branch = repo_resp.json().get("default_branch", "main")
+    
+    # 2. Get the recursive tree
+    # We use recursive=1 to get the entire tree in one go (limit 100k entries)
+    tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
+    tree_resp = requests.get(tree_url, headers=get_headers())
+    
+    if tree_resp.status_code != 200:
+        return []
+
+    dockerfiles = []
+    tree_data = tree_resp.json()
+    for item in tree_data.get("tree", []):
+        if item["type"] == "blob" and item["path"].split("/")[-1].lower() == "dockerfile":
+            dockerfiles.append(item["path"])
+            
+    return sorted(dockerfiles)
+
 def find_dockerfile(owner: str, repo: str) -> Optional[str]:
     """
-    Searches for a Dockerfile in the repository root.
+    Searches for a Dockerfile. Priority to root, then recursive.
     Returns the path if found, else None.
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/contents"
@@ -51,7 +80,10 @@ def find_dockerfile(owner: str, repo: str) -> Optional[str]:
         for item in contents:
             if item["type"] == "file" and item["name"].lower() == "dockerfile":
                 return item["path"]
-    return None
+                
+    # Fallback to recursive find
+    all_dfs = find_all_dockerfiles(owner, repo)
+    return all_dfs[0] if all_dfs else None
 
 def get_file_content(owner: str, repo: str, path: str) -> Optional[str]:
     """
@@ -101,13 +133,10 @@ def fork_repo(owner: str, repo: str):
     resp.raise_for_status()
     return resp.json()
 
-def full_pr_workflow(owner: str, repo: str, dockerfile_path: str, new_content: str, branch_name: str = "optimize-dockerfile", base_branch: str = None):
+def full_bulk_pr_workflow(owner: str, repo: str, updates: list[dict], branch_name: str = "optimize-all-services", base_branch: str = None):
     """
-    Executes the full workflow:
-    1. Check for write access. If no, fork.
-    2. Create a new branch on the (forked) repo.
-    3. Commit the new Dockerfile.
-    4. Create the PR on the original repo.
+    Updates multiple files in a single commit and creates one PR.
+    updates: list of {"path": str, "content": str}
     """
     if not get_token():
         raise Exception("GITHUB_TOKEN is required for this operation")
@@ -115,7 +144,7 @@ def full_pr_workflow(owner: str, repo: str, dockerfile_path: str, new_content: s
     headers = get_headers()
     current_user = get_authenticated_user()
     
-    # 1. Check permissions
+    # 1. Check permissions & Fork if needed
     repo_url = f"https://api.github.com/repos/{owner}/{repo}"
     repo_resp = requests.get(repo_url, headers=headers)
     repo_resp.raise_for_status()
@@ -128,62 +157,74 @@ def full_pr_workflow(owner: str, repo: str, dockerfile_path: str, new_content: s
     if not can_write:
         fork_repo(owner, repo)
         target_owner = current_user
-        # Wait for fork to be ready (up to 10 seconds)
         for i in range(5):
              time.sleep(2)
-             check_url = f"https://api.github.com/repos/{target_owner}/{repo}"
-             c_resp = requests.get(check_url, headers=headers)
-             if c_resp.status_code == 200:
+             if requests.get(f"https://api.github.com/repos/{target_owner}/{repo}", headers=headers).status_code == 200:
                  break
 
-    # 2. Get Base SHA from TARGET repo (ensures it's ready)
+    # 2. Get Base Branch SHA
     ref_url = f"https://api.github.com/repos/{target_owner}/{repo}/git/refs/heads/{default_branch}"
     ref_resp = requests.get(ref_url, headers=headers)
     if ref_resp.status_code != 200:
-        # Fallback to upstream
-        ref_url = f"https://api.github.com/repos/{owner}/{repo}/git/refs/heads/{default_branch}"
-        ref_resp = requests.get(ref_url, headers=headers)
-    
+        ref_resp = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/refs/heads/{default_branch}", headers=headers)
     ref_resp.raise_for_status()
     base_sha = ref_resp.json()["object"]["sha"]
 
-    # 3. Create New Branch on TARGET repo
-    new_ref_url = f"https://api.github.com/repos/{target_owner}/{repo}/git/refs"
-    new_ref_payload = {
-        "ref": f"refs/heads/{branch_name}",
-        "sha": base_sha
-    }
-    new_ref_resp = requests.post(new_ref_url, headers=headers, json=new_ref_payload)
-    if new_ref_resp.status_code not in [201, 422]:
-        new_ref_resp.raise_for_status()
+    # 3. Create Blobs & Tree
+    # We create a new tree starting from the base_sha's tree
+    # First, get the tree SHA of the base commit
+    commit_url = f"https://api.github.com/repos/{owner}/{repo}/git/commits/{base_sha}"
+    commit_resp = requests.get(commit_url, headers=headers)
+    commit_resp.raise_for_status()
+    base_tree_sha = commit_resp.json()["tree"]["sha"]
 
-    # 4. Get Current File SHA from target repo and branch
-    file_url = f"https://api.github.com/repos/{target_owner}/{repo}/contents/{dockerfile_path}"
-    file_resp = requests.get(f"{file_url}?ref={branch_name}", headers=headers)
-    if file_resp.status_code != 200:
-        # Fallback to upstream version
-        file_resp = requests.get(f"https://api.github.com/repos/{owner}/{repo}/contents/{dockerfile_path}", headers=headers)
+    tree_items = []
+    for update in updates:
+        tree_items.append({
+            "path": update["path"],
+            "mode": "100644",
+            "type": "blob",
+            "content": update["content"]
+        })
+
+    # Create the new tree
+    create_tree_url = f"https://api.github.com/repos/{target_owner}/{repo}/git/trees"
+    tree_payload = {
+        "base_tree": base_tree_sha,
+        "tree": tree_items
+    }
+    tree_resp = requests.post(create_tree_url, headers=headers, json=tree_payload)
+    tree_resp.raise_for_status()
+    new_tree_sha = tree_resp.json()["sha"]
+
+    # 4. Create Commit
+    commit_payload = {
+        "message": "Bulk optimization of multiple services",
+        "tree": new_tree_sha,
+        "parents": [base_sha]
+    }
+    commit_resp = requests.post(f"https://api.github.com/repos/{target_owner}/{repo}/git/commits", headers=headers, json=commit_payload)
+    commit_resp.raise_for_status()
+    new_commit_sha = commit_resp.json()["sha"]
+
+    # 5. Update or Create Branch Ref
+    ref_path = f"refs/heads/{branch_name}"
+    ref_url = f"https://api.github.com/repos/{target_owner}/{repo}/git/{ref_path}"
+    ref_check = requests.get(ref_url, headers=headers)
     
-    file_resp.raise_for_status()
-    file_sha = file_resp.json()["sha"]
+    if ref_check.status_code == 200:
+        # Update existing
+        requests.patch(ref_url, headers=headers, json={"sha": new_commit_sha, "force": True}).raise_for_status()
+    else:
+        # Create new
+        requests.post(f"https://api.github.com/repos/{target_owner}/{repo}/git/refs", headers=headers, json={"ref": ref_path, "sha": new_commit_sha}).raise_for_status()
 
-    # 5. Commit File Update to TARGET repo
-    put_payload = {
-        "message": "Optimize Dockerfile with AI",
-        "content": base64.b64encode(new_content.encode("utf-8")).decode("utf-8"),
-        "sha": file_sha,
-        "branch": branch_name
-    }
-    put_resp = requests.put(file_url, headers=headers, json=put_payload)
-    put_resp.raise_for_status()
-
-    # 6. Create PR on ORIGINAL repo
+    # 6. Create PR
     head_param = f"{target_owner}:{branch_name}" if target_owner != owner else branch_name
-    
     pr_resp = create_pull_request(
         owner, repo,
-        title="✨ Optimized Dockerfile",
-        body="This Pull Request introduces an industry-ready, secure, and optimized Dockerfile generated by the Docker Container Optimizer.",
+        title="✨ Bulk Service Optimization",
+        body="This Pull Request introduces security and performance optimizations across multiple services (frontend/backend) in the repository.",
         head=head_param,
         base=default_branch
     )
@@ -191,13 +232,4 @@ def full_pr_workflow(owner: str, repo: str, dockerfile_path: str, new_content: s
     if pr_resp.status_code == 201:
         return pr_resp.json()["html_url"]
     else:
-        data = pr_resp.json()
-        error_msg = data.get("errors", [{}])[0].get("message", "PR creation failed or already exists")
-        if "already exists" in error_msg:
-             try:
-                 list_pr_url = f"https://api.github.com/repos/{owner}/{repo}/pulls?head={head_param}&state=open"
-                 l_resp = requests.get(list_pr_url, headers=headers)
-                 if l_resp.status_code == 200 and len(l_resp.json()) > 0:
-                     return l_resp.json()[0]["html_url"]
-             except: pass
-        return error_msg
+        return pr_resp.json().get("errors", [{}])[0].get("message", "PR creation failed")

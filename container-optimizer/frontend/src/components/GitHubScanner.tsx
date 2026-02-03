@@ -1,26 +1,80 @@
 import { useState } from "react"
 import axios from "axios"
 
-export default function GitHubScanner({ onResult, setLoading }: { onResult: (res: any) => void, setLoading: (l: boolean) => void }) {
+export default function GitHubScanner({ onResult, setLoading, notify }: { onResult: (res: any) => void, setLoading: (l: boolean) => void, notify: (type: 'success' | 'error' | 'info', message: string, link?: { label: string, url: string }) => void }) {
     const [repoUrl, setRepoUrl] = useState("")
+    const [discoveryResult, setDiscoveryResult] = useState<{ paths: string[], url: string } | null>(null)
+    const [optimizedResults, setOptimizedResults] = useState<Record<string, any>>({})
+    const [activePath, setActivePath] = useState<string | null>(null)
+    const [pushing, setPushing] = useState(false)
 
-    const handleScan = async () => {
-        if (!repoUrl.trim()) return
+    const handleScan = async (selectedPath?: string) => {
+        const url = discoveryResult?.url || repoUrl
+        if (!url.trim()) return
+
         setLoading(true)
         try {
-            const res = await axios.post("http://127.0.0.1:8000/api/scan-github", { url: repoUrl })
-            // res.data is the full report object from build_static_report
-            onResult({
-                ...res.data,
-                repo_url: repoUrl
+            const res = await axios.post("http://127.0.0.1:8000/api/scan-github", {
+                url: url,
+                path: selectedPath
             })
+
+            if (res.data.multi_service) {
+                setDiscoveryResult({ paths: res.data.paths, url: res.data.url })
+            } else {
+                const path = selectedPath || res.data.path || "Dockerfile"
+                const resultData = { ...res.data, repo_url: url }
+
+                setOptimizedResults(prev => ({ ...prev, [path]: resultData }))
+                setDiscoveryResult(prev => prev || { paths: [path], url: url })
+                setActivePath(path)
+                onResult(resultData)
+            }
         } catch (err: any) {
             console.error("GitHub Scan failed", err)
-            const errorMsg = err.response?.data?.detail || "Failed to scan GitHub repository"
-            alert(errorMsg)
+            notify("error", err.response?.data?.detail || "Failed to scan GitHub repository")
         } finally {
             setLoading(false)
         }
+    }
+
+    const handlePushAll = async () => {
+        const paths = Object.keys(optimizedResults)
+        if (paths.length === 0) return
+
+        setPushing(true)
+        try {
+            const updates = paths.map(p => ({
+                path: p,
+                content: optimizedResults[p].optimization
+            }))
+
+            const res = await axios.post("http://127.0.0.1:8000/api/create-bulk-pr", {
+                url: discoveryResult?.url || repoUrl,
+                updates: updates
+            })
+
+            if (res.data.message.includes("https://github.com")) {
+                const prUrl = res.data.message.split(": ")[1]
+                notify("success", "Bulk optimization package deployed successfully!", {
+                    label: "VIEW PULL REQUEST",
+                    url: prUrl
+                })
+            } else {
+                notify("success", res.data.message)
+            }
+        } catch (err: any) {
+            console.error("Bulk PR failed", err)
+            notify("error", err.response?.data?.detail || "Failed to create PR")
+        } finally {
+            setPushing(false)
+        }
+    }
+
+    const getServiceName = (path: string) => {
+        const parts = path.split('/')
+        if (parts.length > 1) return parts[parts.length - 2].toUpperCase()
+        return "ROOT"
     }
 
     return (
@@ -34,41 +88,118 @@ export default function GitHubScanner({ onResult, setLoading }: { onResult: (res
                 </div>
 
                 <div className="relative z-10">
-                    <header className="mb-10">
-                        <div className="flex items-center gap-4 mb-4">
-                            <div className="px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black uppercase text-emerald-400 tracking-widest">
-                                External Hub Integration
-                            </div>
-                        </div>
-                        <h2 className="text-4xl font-black text-white mb-2 tracking-tight">Git Repository Scan</h2>
-                        <p className="text-zinc-500 text-base font-medium max-w-2xl leading-relaxed">
-                            Supply your repository URL. Our neural engine will traverse the architecture, identify the Dockerfile, and generate a hyper-optimized infrastructure update.
-                        </p>
-                    </header>
+                    {!discoveryResult ? (
+                        <>
+                            <header className="mb-10">
+                                <div className="flex items-center gap-4 mb-4">
+                                    <div className="px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black uppercase text-emerald-400 tracking-widest">
+                                        External Hub Integration
+                                    </div>
+                                </div>
+                                <h2 className="text-4xl font-black text-white mb-2 tracking-tight">Git Repository Scan</h2>
+                                <p className="text-zinc-500 text-base font-medium max-w-2xl leading-relaxed">
+                                    Supply your repository URL. Our neural engine will traverse the architecture, identify the Dockerfile, and generate a hyper-optimized infrastructure update.
+                                </p>
+                            </header>
 
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <div className="flex-1 relative group/input">
-                            <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
-                                <span className="text-zinc-600 text-lg">🔗</span>
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <div className="flex-1 relative group/input">
+                                    <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
+                                        <span className="text-zinc-600 text-lg">🔗</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        className="w-full bg-black/40 text-white font-mono text-sm pl-14 pr-6 py-5 rounded-3xl border-2 border-zinc-800 transition-all focus:border-indigo-500/50 focus:bg-black/60 outline-none"
+                                        placeholder="https://github.com/owner/repository"
+                                        value={repoUrl}
+                                        onChange={(e) => setRepoUrl(e.target.value)}
+                                        onKeyDown={(e) => e.key === "Enter" && handleScan()}
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => handleScan()}
+                                    className="px-10 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[2rem] font-black transition-all shadow-xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 group/btn"
+                                    disabled={!repoUrl.trim()}
+                                >
+                                    <span>DEPLOY ANALYZER</span>
+                                    <span className="group-hover:translate-x-1 transition-transform">→</span>
+                                </button>
                             </div>
-                            <input
-                                type="text"
-                                className="w-full bg-black/40 text-white font-mono text-sm pl-14 pr-6 py-5 rounded-3xl border-2 border-zinc-800 transition-all focus:border-indigo-500/50 focus:bg-black/60 outline-none"
-                                placeholder="https://github.com/owner/repository"
-                                value={repoUrl}
-                                onChange={(e) => setRepoUrl(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && handleScan()}
-                            />
+                        </>
+                    ) : (
+                        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                            <header className="mb-10 flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-4xl font-black text-white mb-1 tracking-tight">Service Dashboard</h2>
+                                    <p className="text-zinc-500 text-base font-medium">Manage and optimize multiple services simultaneously.</p>
+                                </div>
+                                <div className="flex gap-4">
+                                    {Object.keys(optimizedResults).length > 0 && (
+                                        <button
+                                            onClick={handlePushAll}
+                                            disabled={pushing}
+                                            className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+                                        >
+                                            {pushing ? "PUSHING..." : `PUSH ${Object.keys(optimizedResults).length} UPDATES →`}
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            setDiscoveryResult(null)
+                                            setOptimizedResults({})
+                                            setActivePath(null)
+                                        }}
+                                        className="text-zinc-500 hover:text-white text-xs font-black uppercase tracking-widest px-6 py-3 rounded-2xl border border-zinc-800 hover:bg-zinc-800 transition-all"
+                                    >
+                                        RESET
+                                    </button>
+                                </div>
+                            </header>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {discoveryResult.paths.map((path) => {
+                                    const isOptimized = !!optimizedResults[path]
+                                    const isActive = activePath === path
+
+                                    return (
+                                        <button
+                                            key={path}
+                                            onClick={() => {
+                                                if (isOptimized) {
+                                                    setActivePath(path)
+                                                    onResult(optimizedResults[path])
+                                                } else {
+                                                    handleScan(path)
+                                                }
+                                            }}
+                                            className={`p-8 rounded-[2rem] border transition-all text-left group/card relative overflow-hidden ${isActive
+                                                ? 'bg-indigo-600/10 border-indigo-500'
+                                                : isOptimized
+                                                    ? 'bg-emerald-600/5 border-emerald-500/30'
+                                                    : 'bg-zinc-950 border-zinc-800 hover:border-zinc-600'
+                                                }`}
+                                        >
+                                            <div className="absolute top-0 right-0 p-4 opacity-20 group-hover/card:scale-125 transition-transform">
+                                                {isOptimized ? '✅' : '🐳'}
+                                            </div>
+                                            <span className={`block text-[10px] font-black uppercase tracking-widest mb-1 ${isOptimized ? 'text-emerald-400' : 'text-indigo-400'}`}>
+                                                {getServiceName(path)} SERVICE
+                                            </span>
+                                            <span className="block text-xl font-black text-white tracking-tight mb-4">{path.split('/').pop()}</span>
+                                            <p className="text-zinc-600 text-xs font-mono truncate">{path}</p>
+
+                                            <div className="mt-6 flex items-center justify-between">
+                                                <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-white' : 'text-zinc-500 group-hover/card:text-white'}`}>
+                                                    {isActive ? 'CURRENTLY VIEWING' : isOptimized ? 'VIEW ANALYSIS' : 'ANALYZE NOW'}
+                                                </span>
+                                                <span className="group-hover/card:translate-x-1 transition-transform">→</span>
+                                            </div>
+                                        </button>
+                                    )
+                                })}
+                            </div>
                         </div>
-                        <button
-                            onClick={handleScan}
-                            className="px-10 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[2rem] font-black transition-all shadow-xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 group/btn"
-                            disabled={!repoUrl.trim()}
-                        >
-                            <span>DEPLOY ANALYZER</span>
-                            <span className="group-hover:translate-x-1 transition-transform">→</span>
-                        </button>
-                    </div>
+                    )}
                 </div>
             </div>
         </div>

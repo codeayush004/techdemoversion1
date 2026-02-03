@@ -4,6 +4,7 @@ import ActionPanel from "./components/ActionPanel"
 import ResultViewer from "./components/ResultViewer"
 import DockerfileUpload from "./components/DockerfileUpload"
 import GitHubScanner from "./components/GitHubScanner"
+import Notification, { type Toast } from "./components/Notification"
 import type { Container } from "./types"
 
 export default function App() {
@@ -11,6 +12,16 @@ export default function App() {
   const [result, setResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<"runtime" | "static" | "github">("runtime")
+  const [toasts, setToasts] = useState<Toast[]>([])
+
+  const notify = (type: Toast['type'], message: string, link?: Toast['link']) => {
+    const id = Math.random().toString(36).substring(2, 9)
+    setToasts(prev => [...prev as Toast[], { id, type, message, link }])
+  }
+
+  const dismissToast = (id: string) => {
+    setToasts(prev => (prev as Toast[]).filter(t => t.id !== id))
+  }
 
   const handleViewChange = (newView: "runtime" | "static" | "github") => {
     setView(newView)
@@ -21,6 +32,7 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden pt-10 px-6 sm:px-10 lg:px-16 selection:bg-indigo-500/30">
+      <Notification toasts={toasts} onDismiss={dismissToast} />
       <div className="glow-mesh" />
 
       {/* Premium Navigation */}
@@ -87,15 +99,16 @@ export default function App() {
               container={selected}
               onResult={setResult}
               setLoading={setLoading}
+              notify={notify}
             />
           </section>
         ) : view === "static" ? (
           <div className="animate-in fade-in zoom-in-95 duration-1000">
-            <DockerfileUpload onResult={setResult} setLoading={setLoading} />
+            <DockerfileUpload onResult={setResult} setLoading={setLoading} notify={notify} />
           </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-right-8 duration-1000">
-            <GitHubScanner onResult={setResult} setLoading={setLoading} />
+            <GitHubScanner onResult={setResult} setLoading={setLoading} notify={notify} />
           </div>
         )}
 
@@ -112,7 +125,7 @@ export default function App() {
         )}
 
         <div className="mt-20">
-          <ResultViewer result={result} />
+          <ResultViewer result={result} notify={notify} />
         </div>
       </main>
 

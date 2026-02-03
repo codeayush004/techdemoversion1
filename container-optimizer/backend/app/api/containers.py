@@ -4,7 +4,7 @@ from typing import Optional
 from app.core.report.report_builder import build_report, build_static_report
 from app.core.ai_service import optimize_with_ai
 from app.docker.client import get_docker_client
-from app.core.github_service import extract_repo_info, find_dockerfile, get_file_content, full_pr_workflow
+from app.core.github_service import extract_repo_info, find_dockerfile, get_file_content, full_bulk_pr_workflow, find_all_dockerfiles
 from fastapi import HTTPException
 import requests
 
@@ -19,26 +19,30 @@ def list_containers():
 
     for c in containers:
         try:
-            image = client.images.get(c.image.id)
-            image_size_mb = round(image.attrs["Size"] / (1024 * 1024), 2)
+            # Optimize: Try to get size from attributes directly to avoid extra image fetch
+            image_size_mb = 0.0
+            try:
+                if hasattr(c.image, "attrs") and "Size" in c.image.attrs:
+                    image_size_mb = round(c.image.attrs["Size"] / (1024 * 1024), 2)
+                else:
+                    # Fallback if attrs missing
+                    img = client.images.get(c.image.id)
+                    image_size_mb = round(img.attrs["Size"] / (1024 * 1024), 2)
+            except: pass
 
-            memory_usage_mb = 0.0
-            if c.status == "running":
-                stats = c.stats(stream=False)
-                mem = stats["memory_stats"].get("usage", 0)
-                memory_usage_mb = round(mem / (1024 * 1024), 2)
-
+            # NOTE: We skip c.stats(stream=False) here because it is too slow (blocks for ~1s per container)
+            # Memory usage will be fetched only during deep analysis or reported as 0.0 in the list view.
             results.append({
                 "id": c.short_id,
                 "name": c.name,
-                "image": c.image.tags[0] if c.image.tags else c.image.id,
+                "image": c.image.tags[0] if (hasattr(c.image, "tags") and c.image.tags) else c.short_id,
                 "status": c.status,
                 "image_size_mb": image_size_mb,
-                "memory_usage_mb": memory_usage_mb,
+                "memory_usage_mb": 0.0, # Optimized for speed
             })
 
         except Exception:
-            pass
+            continue
 
     return results
 
@@ -68,6 +72,7 @@ def analyze_dockerfile(request: DockerfileRequest):
 
 class GitHubScanRequest(BaseModel):
     url: str
+    path: Optional[str] = None
 
 @router.post("/scan-github")
 def scan_github(request: GitHubScanRequest):
@@ -75,26 +80,42 @@ def scan_github(request: GitHubScanRequest):
     if not owner or not repo:
         raise HTTPException(status_code=400, detail="Invalid GitHub URL")
     
-    path = find_dockerfile(owner, repo)
+    # 1. Handle Path Discovery or Targeted Analysis
+    path = request.path
     if not path:
-        raise HTTPException(status_code=404, detail="Dockerfile not found in repository root")
-    
+        # Discovery Phase
+        all_paths = find_all_dockerfiles(owner, repo)
+        if not all_paths:
+            raise HTTPException(status_code=404, detail="No Dockerfile found in repository")
+        
+        # If multiple found and no path specified, return list for selection
+        if len(all_paths) > 1:
+            return {
+                "multi_service": True,
+                "paths": all_paths,
+                "owner": owner,
+                "repo": repo,
+                "url": request.url
+            }
+        path = all_paths[0]
+
+    # 2. Analyze the specific path
     content = get_file_content(owner, repo, path)
     if not content:
-        raise HTTPException(status_code=500, detail="Failed to fetch Dockerfile content")
+        raise HTTPException(status_code=404, detail=f"Failed to fetch Dockerfile at {path}")
     
     # Use the unified static report builder (includes Trivy + AI)
     report = build_static_report(content)
     
-    # Map for frontend compatibility if needed, or just return the full report
-    # We add GitHub metadata to the report
+    # Add GitHub metadata to the report
     report.update({
         "owner": owner,
         "repo": repo,
         "branch": branch,
         "path": path,
         "original_content": content,
-        "url": request.url # Added to ensure PR creation has the URL
+        "url": request.url,
+        "multi_service": False
     })
     
     # Ensure ResultViewer can find the AI result
@@ -104,25 +125,24 @@ def scan_github(request: GitHubScanRequest):
     
     return report
 
-class CreatePRRequest(BaseModel):
+class CreateBulkPRRequest(BaseModel):
     url: str
-    optimized_content: str
-    path: Optional[str] = "Dockerfile"
-    branch_name: Optional[str] = "optimize-dockerfile"
+    updates: list[dict] # list of {"path": str, "content": str}
+    branch_name: Optional[str] = "optimize-all-services"
     base_branch: Optional[str] = None
 
-@router.post("/create-pr")
-def create_pr(request: CreatePRRequest):
+@router.post("/create-bulk-pr")
+def create_bulk_pr(request: CreateBulkPRRequest):
+    from app.core.github_service import full_bulk_pr_workflow
     owner, repo, branch = extract_repo_info(request.url)
     if not owner or not repo:
         raise HTTPException(status_code=400, detail="Invalid GitHub URL")
     
     try:
-        pr_link = full_pr_workflow(
+        pr_link = full_bulk_pr_workflow(
             owner=owner,
             repo=repo,
-            dockerfile_path=request.path,
-            new_content=request.optimized_content,
+            updates=request.updates,
             branch_name=request.branch_name,
             base_branch=request.base_branch
         )

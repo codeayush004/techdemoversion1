@@ -1,7 +1,7 @@
 import { useState } from "react"
 import axios from "axios"
 
-export default function ResultViewer({ result }: { result: any }) {
+export default function ResultViewer({ result, notify }: { result: any, notify: (type: 'success' | 'error' | 'info', message: string, link?: { label: string, url: string }) => void }) {
   const [showPaste, setShowPaste] = useState(false)
   const [pastedDockerfile, setPastedDockerfile] = useState("")
   const [prStatus, setPrStatus] = useState<string | null>(null)
@@ -33,7 +33,7 @@ export default function ResultViewer({ result }: { result: any }) {
       setShowPaste(false)
     } catch (err) {
       console.error("Refinement failed", err)
-      alert("Failed to refine optimization. Check backend logs.")
+      notify("error", "Failed to refine optimization. Check backend logs.")
     } finally {
       setLoadingRefine(false)
     }
@@ -49,11 +49,21 @@ export default function ResultViewer({ result }: { result: any }) {
         base_branch: currentResult.branch || null
       }
       const res = await axios.post("http://127.0.0.1:8000/api/create-pr", payload)
+
+      if (res.data.message.includes("https://github.com")) {
+        const prUrl = res.data.message.split(": ")[1]
+        notify("success", "Deep optimized infrastructure deployed!", {
+          label: "OPEN PULL REQUEST",
+          url: prUrl
+        })
+      } else {
+        notify("success", res.data.message)
+      }
       setPrStatus(res.data.message)
     } catch (err: any) {
       console.error("PR creation failed", err)
       const msg = err.response?.data?.detail || "Failed to create PR"
-      alert(msg)
+      notify("error", msg)
     } finally {
       setCreatingPr(false)
     }

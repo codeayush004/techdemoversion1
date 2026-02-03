@@ -8,10 +8,12 @@ export default function ActionPanel({
   container,
   onResult,
   setLoading,
+  notify,
 }: {
   container: Container | null
   onResult: (r: any) => void
   setLoading: (b: boolean) => void
+  notify: (type: 'success' | 'error' | 'info', message: string, link?: { label: string, url: string }) => void
 }) {
   if (!container) return null
 
@@ -29,7 +31,7 @@ export default function ActionPanel({
       onResult(res.data)
     } catch (err) {
       console.error("Analysis failed", err)
-      alert("Failed to analyze image. Check backend logs.")
+      notify("error", "Failed to analyze image. Check backend logs.")
     } finally {
       setLoading(false)
     }

@@ -31,11 +31,18 @@
   * {
     @apply border-zinc-800;
   }
+
   body {
     @apply bg-[#030303] text-zinc-100 selection:bg-indigo-500/30 selection:text-indigo-200;
     font-family: 'Inter', sans-serif;
   }
-  h1, h2, h3, h4, h5, h6 {
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: 'Outfit', sans-serif;
   }
 }
@@ -44,7 +51,7 @@
   .glass {
     @apply bg-zinc-900/40 backdrop-blur-xl border border-white/5;
   }
-  
+
   .glass-card {
     @apply glass rounded-[2rem] shadow-2xl;
   }
@@ -63,18 +70,28 @@
 }
 
 @keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-  100% { transform: translateY(0px); }
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
 }
 
 /* Custom Scrollbar for Luxury feel */
 ::-webkit-scrollbar {
   width: 10px;
 }
+
 ::-webkit-scrollbar-track {
   @apply bg-zinc-950;
 }
+
 ::-webkit-scrollbar-thumb {
   @apply bg-zinc-800 rounded-full border-2 border-zinc-950 hover:bg-zinc-700 transition-colors;
 }
@@ -86,9 +103,22 @@
   width: 100%;
   height: 100%;
   z-index: -1;
-  background-image: 
-    radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-    radial-gradient(at 50% 0%, hsla(225,39%,30%,0.1) 0, transparent 50%), 
-    radial-gradient(at 100% 0%, hsla(339,49%,30%,0.1) 0, transparent 50%);
+
+  background-image: radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 0.1) 0, transparent 50%);
   background-attachment: fixed;
+}
+
+@keyframes toast-progress {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
+}
+
+.animate-toast-progress {
+  animation: toast-progress 6s linear forwards;
 }
