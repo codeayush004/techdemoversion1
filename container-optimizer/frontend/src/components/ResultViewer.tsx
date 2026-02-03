@@ -4,8 +4,6 @@ import axios from "axios"
 export default function ResultViewer({ result, notify }: { result: any, notify: (type: 'success' | 'error' | 'info', message: string, link?: { label: string, url: string }) => void }) {
   const [showPaste, setShowPaste] = useState(false)
   const [pastedDockerfile, setPastedDockerfile] = useState("")
-  const [prStatus, setPrStatus] = useState<string | null>(null)
-  const [creatingPr, setCreatingPr] = useState(false)
   const [loadingRefine, setLoadingRefine] = useState(false)
   const [refinedResult, setRefinedResult] = useState<any>(null)
 
@@ -39,35 +37,6 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
     }
   }
 
-  const handleCreatePr = async () => {
-    setCreatingPr(true)
-    try {
-      const payload = {
-        url: currentResult.url || currentResult.repo_url,
-        optimized_content: recommendation.optimized_dockerfile || recommendation.dockerfile,
-        path: currentResult.path || "Dockerfile",
-        base_branch: currentResult.branch || null
-      }
-      const res = await axios.post("http://127.0.0.1:8000/api/create-pr", payload)
-
-      if (res.data.message.includes("https://github.com")) {
-        const prUrl = res.data.message.split(": ")[1]
-        notify("success", "Deep optimized infrastructure deployed!", {
-          label: "OPEN PULL REQUEST",
-          url: prUrl
-        })
-      } else {
-        notify("success", res.data.message)
-      }
-      setPrStatus(res.data.message)
-    } catch (err: any) {
-      console.error("PR creation failed", err)
-      const msg = err.response?.data?.detail || "Failed to create PR"
-      notify("error", msg)
-    } finally {
-      setCreatingPr(false)
-    }
-  }
 
   return (
     <div className="mt-16 space-y-12 animate-in fade-in slide-in-from-bottom-8 duration-700 pb-20">
@@ -101,10 +70,10 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
           <div className="relative p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
               <h3 className="text-2xl font-black text-white flex items-center gap-3">
-                <span className="text-indigo-400">01.</span> Neural Refinement
+                <span className="text-indigo-400">01.</span> Logic Refinement
               </h3>
               <p className="text-zinc-500 text-sm mt-1 max-w-md font-medium">
-                Inject your original source Dockerfile to allow the neural engine to align optimization with your logic.
+                Inject your original source Dockerfile to allow the analysis engine to align optimization with your logic.
               </p>
             </div>
             {!showPaste && (
@@ -150,7 +119,7 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
         <header className="mb-8 flex items-end justify-between">
           <div>
             <h2 className="text-3xl font-black text-white px-2 border-l-4 border-indigo-600">Smart Analysis</h2>
-            <p className="text-zinc-500 text-sm mt-1">Cross-referenced insights from static, runtime, and neural scancores.</p>
+            <p className="text-zinc-500 text-sm mt-1">Cross-referenced insights from static and runtime analysis scancores.</p>
           </div>
           <div className="text-[10px] font-black text-zinc-600 uppercase tracking-widest px-4 py-1 bg-zinc-950 rounded-full border border-zinc-900">
             {(currentResult.findings || []).length} CRITICALS
@@ -198,30 +167,13 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
       <section className="mt-20">
         <header className="flex items-center justify-between mb-10">
           <div>
-            <h2 className="text-4xl font-black text-white">Neural Output</h2>
+            <h2 className="text-4xl font-black text-white">Optimized Output</h2>
             <p className="text-zinc-500 font-medium">Next-Gen immutable infrastructure blueprint.</p>
           </div>
           {isAi && (
             <div className="flex items-center gap-2 px-6 py-2 bg-indigo-600/10 border border-indigo-500/20 rounded-full">
               <span className="animate-pulse w-2 h-2 rounded-full bg-indigo-500" />
-              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">AI Validated Architecture</span>
-            </div>
-          )}
-          {isGithub && (
-            <div className="ml-auto flex items-center gap-4">
-              {prStatus ? (
-                <span className="px-8 py-3 bg-green-950/20 text-green-400 font-black rounded-2xl border border-green-500/30 uppercase text-xs tracking-widest">
-                  ✅ {prStatus}
-                </span>
-              ) : (
-                <button
-                  onClick={handleCreatePr}
-                  disabled={creatingPr}
-                  className="px-10 py-3 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-black transition-all shadow-xl shadow-green-600/20 active:scale-95 text-xs uppercase tracking-widest flex items-center gap-3"
-                >
-                  <span className="text-lg">⚓</span> {creatingPr ? "DEPLOYING..." : "PUSH TO GITHUB"}
-                </button>
-              )}
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Optimized Architecture</span>
             </div>
           )}
         </header>
@@ -246,20 +198,28 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
             </div>
 
             <div className="space-y-8 h-full flex flex-col">
-              <div className={`p-10 rounded-[2.5rem] h-fit border transition-all duration-700 flex-1 shadow-2xl ${isAi ? "bg-indigo-950/10 border-indigo-500/30 shadow-indigo-500/5 group" : "bg-zinc-900/40 border-zinc-800"}`}>
-                <h3 className="text-2xl font-black mb-8 flex items-center gap-4 text-white">
-                  {isAi ? "🧠 Neural Reasoning" : "Architectural Insights"}
-                  <div className="h-px bg-zinc-800 flex-1 ml-4" />
-                </h3>
+              <div className={`relative p-10 rounded-[2.5rem] h-fit border transition-all duration-700 flex-1 shadow-2xl ${isAi ? "bg-indigo-950/10 border-indigo-500/30 shadow-indigo-500/5 group" : "bg-zinc-900/40 border-zinc-800"}`}>
+                <div className="flex items-center justify-between mb-10">
+                  <h3 className="text-2xl font-black flex items-center gap-4 text-white">
+                    {isAi ? "🧠 Smart Reasoning" : "Architectural Insights"}
+                  </h3>
+                </div>
 
                 {Array.isArray(recommendation.explanation) &&
                   recommendation.explanation.length > 0 ? (
-                  <ul className="space-y-6">
+                  <ul className="space-y-8">
                     {recommendation.explanation.map(
                       (e: string, i: number) => (
-                        <li key={i} className="flex gap-4">
-                          <span className="text-indigo-500 font-black text-xs mt-1">/0{i + 1}</span>
-                          <p className="text-zinc-300 leading-relaxed font-medium">{e}</p>
+                        <li key={i} className="flex gap-5 group/item cursor-default">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center transition-all duration-500 group-hover/item:bg-emerald-500 group-hover/item:scale-110">
+                            <svg className="w-4 h-4 text-emerald-400 group-hover/item:text-black transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-zinc-300 leading-relaxed font-semibold transition-colors group-hover/item:text-white">{e}</p>
+                            <div className="h-px w-0 group-hover/item:w-full bg-gradient-to-r from-emerald-500/50 to-transparent transition-all duration-700 mt-2" />
+                          </div>
                         </li>
                       )
                     )}
@@ -271,17 +231,22 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
                 )}
 
                 {isAi && (
-                  <div className="mt-20 pt-10 border-t border-white/5 flex items-center justify-between">
+                  <div className="mt-16 pt-10 border-t border-white/5 flex items-center justify-between relative z-10">
                     <div className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.3em]">
-                      MODEL: GPT-OSS-120B
+                      OPTIMIZATION CORE: GPT-V2-STABLE
                     </div>
-                    <div className="flex gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50" />
+                    <div className="flex gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/5 border border-indigo-500/10">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/50 animate-pulse" />
                       <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/30" />
                       <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/10" />
                     </div>
                   </div>
                 )}
+
+                {/* Background Decoration */}
+                <div className="absolute bottom-0 right-0 p-10 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
+                  <span className="text-8xl">🧬</span>
+                </div>
               </div>
             </div>
           </div>

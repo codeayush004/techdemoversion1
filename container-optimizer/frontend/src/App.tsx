@@ -4,6 +4,7 @@ import ActionPanel from "./components/ActionPanel"
 import ResultViewer from "./components/ResultViewer"
 import DockerfileUpload from "./components/DockerfileUpload"
 import GitHubScanner from "./components/GitHubScanner"
+import DockerHubScanner from "./components/DockerHubScanner"
 import Notification, { type Toast } from "./components/Notification"
 import type { Container } from "./types"
 
@@ -11,7 +12,7 @@ export default function App() {
   const [selected, setSelected] = useState<Container | null>(null)
   const [result, setResult] = useState<any>(null)
   const [loading, setLoading] = useState(false)
-  const [view, setView] = useState<"runtime" | "static" | "github">("runtime")
+  const [view, setView] = useState<"runtime" | "static" | "github" | "registry">("runtime")
   const [toasts, setToasts] = useState<Toast[]>([])
 
   const notify = (type: Toast['type'], message: string, link?: Toast['link']) => {
@@ -23,7 +24,7 @@ export default function App() {
     setToasts(prev => (prev as Toast[]).filter(t => t.id !== id))
   }
 
-  const handleViewChange = (newView: "runtime" | "static" | "github") => {
+  const handleViewChange = (newView: "runtime" | "static" | "github" | "registry") => {
     setView(newView)
     setResult(null)
     setSelected(null)
@@ -48,13 +49,13 @@ export default function App() {
               Docker <span className="text-zinc-500 font-light">Optimizer</span>
             </h1>
             <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-black flex items-center gap-1.5 mt-0.5">
-              <span className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse" /> AI Powered Hub
+              <span className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse" /> Analysis Engine
             </div>
           </div>
         </div>
 
         <div className="hidden md:flex items-center bg-black/40 p-1.5 rounded-2xl border border-white/5 space-x-1">
-          {(["runtime", "static", "github"] as const).map((v) => (
+          {(["runtime", "static", "github", "registry"] as const).map((v) => (
             <button
               key={v}
               onClick={() => handleViewChange(v)}
@@ -63,7 +64,7 @@ export default function App() {
                 : "text-zinc-500 hover:text-zinc-200 hover:bg-white/5"
                 }`}
             >
-              {v.charAt(0).toUpperCase() + v.slice(1)}
+              {v === "static" ? "Static" : v === "github" ? "GitHub" : v === "registry" ? "Registry" : "Runtime"}
             </button>
           ))}
         </div>
@@ -106,9 +107,13 @@ export default function App() {
           <div className="animate-in fade-in zoom-in-95 duration-1000">
             <DockerfileUpload onResult={setResult} setLoading={setLoading} notify={notify} />
           </div>
-        ) : (
+        ) : view === "github" ? (
           <div className="animate-in fade-in slide-in-from-right-8 duration-1000">
             <GitHubScanner onResult={setResult} setLoading={setLoading} notify={notify} />
+          </div>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-left-8 duration-1000">
+            <DockerHubScanner onResult={setResult} setLoading={setLoading} notify={notify} />
           </div>
         )}
 
@@ -117,7 +122,7 @@ export default function App() {
             <div className="text-center">
               <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-6 shadow-xl shadow-indigo-600/20"></div>
               <p className="text-2xl font-black text-white tracking-tight animate-pulse text-glow">
-                Deep Analyzing Neural Core...
+                Optimizing Infrastructure Architecture...
               </p>
               <p className="text-zinc-500 mt-2 font-medium">Extracting performance optimizations</p>
             </div>

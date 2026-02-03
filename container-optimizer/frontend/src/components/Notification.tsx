@@ -52,7 +52,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast, onDismiss: (id: string)
     }
 
     return (
-        <div className={`pointer-events-auto relative group glass-card p-6 border ${colors[toast.type]} animate-in slide-in-from-right-8 fade-in duration-500`}>
+        <div className={`pointer-events-auto relative group glass-card p-6 border overflow-hidden ${colors[toast.type]} animate-in slide-in-from-right-8 fade-in duration-500`}>
             <div className="flex items-start gap-4">
                 <span className="text-xl">{icons[toast.type]}</span>
                 <div className="flex-1">
@@ -80,8 +80,10 @@ function ToastItem({ toast, onDismiss }: { toast: Toast, onDismiss: (id: string)
                     ✕
                 </button>
             </div>
-            <div className="absolute bottom-0 left-0 h-1 bg-white/10 w-full overflow-hidden">
-                <div className={`h-full opacity-50 ${toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-indigo-500'} animate-toast-progress`} />
+            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full overflow-hidden">
+                <div className={`h-full relative overflow-hidden ${toast.type === 'success' ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : toast.type === 'error' ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]'} animate-toast-progress`}>
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                </div>
             </div>
         </div>
     )

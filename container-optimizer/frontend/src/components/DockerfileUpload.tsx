@@ -46,7 +46,7 @@ export default function DockerfileUpload({ onResult, setLoading, notify }: { onR
                     <header className="mb-10">
                         <div className="flex items-center gap-4 mb-4">
                             <div className="px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[10px] font-black uppercase text-indigo-400 tracking-widest">
-                                Static Neural Engine
+                                Deep Analysis Engine
                             </div>
                         </div>
                         <h2 className="text-4xl font-black text-white mb-2 tracking-tight">Optimize Dockerfile</h2>

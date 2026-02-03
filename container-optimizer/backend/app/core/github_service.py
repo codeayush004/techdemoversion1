@@ -67,23 +67,8 @@ def find_all_dockerfiles(owner: str, repo: str) -> list[str]:
             
     return sorted(dockerfiles)
 
-def find_dockerfile(owner: str, repo: str) -> Optional[str]:
-    """
-    Searches for a Dockerfile. Priority to root, then recursive.
-    Returns the path if found, else None.
-    """
-    url = f"https://api.github.com/repos/{owner}/{repo}/contents"
-    response = requests.get(url, headers=get_headers())
-    
-    if response.status_code == 200:
-        contents = response.json()
-        for item in contents:
-            if item["type"] == "file" and item["name"].lower() == "dockerfile":
-                return item["path"]
-                
-    # Fallback to recursive find
-    all_dfs = find_all_dockerfiles(owner, repo)
-    return all_dfs[0] if all_dfs else None
+            
+
 
 def get_file_content(owner: str, repo: str, path: str) -> Optional[str]:
     """
@@ -133,7 +118,7 @@ def fork_repo(owner: str, repo: str):
     resp.raise_for_status()
     return resp.json()
 
-def full_bulk_pr_workflow(owner: str, repo: str, updates: list[dict], branch_name: str = "optimize-all-services", base_branch: str = None):
+def full_bulk_pr_workflow(owner: str, repo: str, updates: list[dict], branch_name: str = "optimize-all-services", base_branch: str = None, pr_title: str = None, commit_message: str = None):
     """
     Updates multiple files in a single commit and creates one PR.
     updates: list of {"path": str, "content": str}
@@ -199,7 +184,7 @@ def full_bulk_pr_workflow(owner: str, repo: str, updates: list[dict], branch_nam
 
     # 4. Create Commit
     commit_payload = {
-        "message": "Bulk optimization of multiple services",
+        "message": commit_message or "Bulk optimization of multiple services",
         "tree": new_tree_sha,
         "parents": [base_sha]
     }
@@ -223,7 +208,7 @@ def full_bulk_pr_workflow(owner: str, repo: str, updates: list[dict], branch_nam
     head_param = f"{target_owner}:{branch_name}" if target_owner != owner else branch_name
     pr_resp = create_pull_request(
         owner, repo,
-        title="✨ Bulk Service Optimization",
+        title=pr_title or "✨ Bulk Service Optimization",
         body="This Pull Request introduces security and performance optimizations across multiple services (frontend/backend) in the repository.",
         head=head_param,
         base=default_branch

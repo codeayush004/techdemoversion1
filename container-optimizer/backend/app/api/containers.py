@@ -2,11 +2,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 from app.core.report.report_builder import build_report, build_static_report
-from app.core.ai_service import optimize_with_ai
 from app.docker.client import get_docker_client
-from app.core.github_service import extract_repo_info, find_dockerfile, get_file_content, full_bulk_pr_workflow, find_all_dockerfiles
+from app.core.github_service import extract_repo_info, get_file_content, full_bulk_pr_workflow, find_all_dockerfiles
 from fastapi import HTTPException
-import requests
+from app.core.registry_service import scan_registry_image
 
 router = APIRouter()
 
@@ -130,6 +129,8 @@ class CreateBulkPRRequest(BaseModel):
     updates: list[dict] # list of {"path": str, "content": str}
     branch_name: Optional[str] = "optimize-all-services"
     base_branch: Optional[str] = None
+    pr_title: Optional[str] = None
+    commit_message: Optional[str] = None
 
 @router.post("/create-bulk-pr")
 def create_bulk_pr(request: CreateBulkPRRequest):
@@ -144,8 +145,17 @@ def create_bulk_pr(request: CreateBulkPRRequest):
             repo=repo,
             updates=request.updates,
             branch_name=request.branch_name,
-            base_branch=request.base_branch
+            base_branch=request.base_branch,
+            pr_title=request.pr_title,
+            commit_message=request.commit_message
         )
         return {"message": f"Successfully created PR: {pr_link}" if "github.com" in pr_link else pr_link}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+class RegistryScanRequest(BaseModel):
+    image: str
+
+@router.post("/scan-registry")
+def scan_registry(request: RegistryScanRequest):
+    return scan_registry_image(request.image)
