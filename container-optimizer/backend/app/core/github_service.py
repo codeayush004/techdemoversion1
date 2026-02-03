@@ -19,7 +19,8 @@ def extract_repo_info(url: str) -> Tuple[Optional[str], Optional[str], Optional[
     - https://github.com/owner/repo/blob/branch/path
     """
     # Pattern to match owner, repo, and optional branch
-    pattern = r"github\.com/([^/]+)/([^/.]+?)(?:/(?:tree|blob)/([^/]+))?(?:\.git)?(?:$|/)"
+    # Handles .git suffix and repo names with dots
+    pattern = r"github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/(?:tree|blob)/([^/]+))?(?:$|/)"
     match = re.search(pattern, url)
     if match:
         owner = match.group(1)

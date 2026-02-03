@@ -46,11 +46,12 @@ def list_containers():
 
 class RuntimeScanRequest(BaseModel):
     image: str
+    id: Optional[str] = None
     dockerfile_content: Optional[str] = None
 
 @router.post("/image/report")
 def image_report(request: RuntimeScanRequest):
-    return build_report(request.image, request.dockerfile_content)
+    return build_report(request.image, request.dockerfile_content, container_id=request.id)
 
 
 class DockerfileRequest(BaseModel):

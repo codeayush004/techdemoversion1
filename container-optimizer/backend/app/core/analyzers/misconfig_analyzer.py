@@ -126,4 +126,66 @@ def analyze_misconfig(image_analysis: dict, runtime_analysis: dict):
             "recommendation": "Pin specific version tags for reproducible builds."
         })
 
+    # 10. Runtime Instance Checks
+    inst = runtime_analysis.get("instance", {})
+    if inst:
+        # Privileged mode
+        if inst.get("privileged"):
+            issues.append({
+                "id": "RUNTIME_PRIVILEGED",
+                "severity": "CRITICAL",
+                "message": "Container is running in PRIVILEGED mode",
+                "recommendation": "Disable privileged mode and use specific cap-add/cap-drop instead."
+            })
+        
+        # Host network
+        if inst.get("network_mode") == "host":
+            issues.append({
+                "id": "RUNTIME_HOST_NETWORK",
+                "severity": "HIGH",
+                "message": "Container is sharing the HOST network namespace",
+                "recommendation": "Use bridge network or custom overlay networks for isolation."
+            })
+
+        # Resource Limits
+        if inst.get("memory_limit") == 0:
+            issues.append({
+                "id": "RUNTIME_NO_MEMORY_LIMIT",
+                "severity": "MEDIUM",
+                "message": "No memory limit set for active container",
+                "recommendation": "Set --memory limit to prevent OOM on host."
+            })
+        
+        # Volume Inefficiencies & Sensitive Mounts
+        mounts = inst.get("mounts", [])
+        
+        # 1. Anonymous volumes check
+        anonymous_volumes = [m for m in mounts if not m.get("Name") and m.get("Type") == "volume"]
+        if anonymous_volumes:
+            issues.append({
+                "id": "RUNTIME_ANONYMOUS_VOLUMES",
+                "severity": "LOW",
+                "message": f"Detected {len(anonymous_volumes)} anonymous/unused volumes",
+                "recommendation": "Use named volumes or bind mounts for persistent data."
+            })
+
+        # 2. Sensitive Bind Mounts check
+        sensitive_paths = ["/etc", "/proc", "/sys", "/var/run/docker.sock", "/dev", "/root", "/"]
+        for m in mounts:
+            source = m.get("Source", "")
+            is_rw = m.get("RW", False)
+            
+            if any(source.startswith(p) for p in sensitive_paths):
+                # Specific check for docker.sock vs files
+                risk_label = "SENSITIVE HOST DIRECTORY"
+                if "docker.sock" in source:
+                    risk_label = "DOCKER SOCKET"
+                
+                issues.append({
+                    "id": "RUNTIME_SENSITIVE_MOUNT",
+                    "severity": "CRITICAL" if is_rw else "HIGH",
+                    "message": f"Exposure of {risk_label} ({source}) detected",
+                    "recommendation": f"Remove bind mount for {source}. Re-architect to avoid host level access."
+                })
+
     return issues

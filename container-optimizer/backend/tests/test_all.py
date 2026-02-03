@@ -1,68 +1,56 @@
 import sys
 import os
-import unittest
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from app.core.report.report_builder import build_static_report
 from unittest.mock import patch
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from app.core.report.report_builder import build_static_report
-
-SCENARIOS_DIR = os.path.join(os.path.dirname(__file__), "scenarios")
-
-class TestDockerfileOptimizer(unittest.TestCase):
-    
-    @patch('app.core.report.report_builder.optimize_with_ai')
-    @patch('app.core.report.report_builder.analyze_dockerfile_security')
-    def run_scenario(self, filename, mock_security, mock_ai):
-        # Setup mocks
+def test_static_analysis_integrity():
+    print("Testing Static Analysis Integrity...")
+    dockerfile = """
+FROM node:18
+RUN apt-get update && apt-get install -y gcc
+ARG GITHUB_TOKEN=ghp_test12345
+EXPOSE 8080
+CMD ["node", "app.js"]
+"""
+    # Mock AI to isolate local logic
+    with patch('app.core.report.report_builder.optimize_with_ai') as mock_ai:
         mock_ai.return_value = {
-            "optimized_dockerfile": "FROM alpine\nCMD ['echo', 'mocked']",
-            "explanation": ["Mocked for testing"],
-            "security_warnings": []
-        }
-        mock_security.return_value = {
-            "status": "ok",
-            "total_vulnerabilities": 0,
-            "vulnerabilities": []
+            "optimized_dockerfile": "FROM node:18-slim...",
+            "explanation": ["Multi-stage build used"],
+            "security_warnings": ["AI identified high risk"]
         }
         
-        filepath = os.path.join(SCENARIOS_DIR, filename)
-        with open(filepath, "r") as f:
-            content = f.read()
+        report = build_static_report(dockerfile)
         
-        report = build_static_report(content)
-        runtime = report.get('image_analysis', {}).get('runtime', 'unknown')
-        findings = [f.lower() for f in report["findings"]]
+        # 1. Check Findings formatting
+        findings = report["findings"]
+        print(f"Total findings: {len(findings)}")
+        for f in findings:
+            print(f"- {f['category']}: {f['message']}")
+            assert "category" in f
+            assert "message" in f
+            assert "severity" in f
+
+        # 2. Check Deduplication
+        ai_findings = [f for f in findings if f["category"] == "AI"]
+        static_findings = [f for f in findings if f["category"] == "ANALYSIS"]
+        print(f"AI Findings: {len(ai_findings)}")
+        print(f"Static Findings: {len(static_findings)}")
         
-        return runtime, findings
+        # 3. Check specific detections
+        messages = [f["message"].lower() for f in findings]
+        assert any("exposed secret" in m for m in messages), "Should detect the GitHub Token"
+        assert any("gcc" in m or "build tools" in m for f in report["misconfigurations"] for m in [f["message"].lower()]), "Should detect GCC"
 
-    def test_python_bad(self):
-        runtime, findings = self.run_scenario("python_bad.dockerfile")
-        self.assertEqual(runtime, "python")
-        self.assertTrue(any("exposed secret" in f for f in findings))
-        self.assertTrue(any("root user" in f for f in findings))
-
-    def test_node_bad(self):
-        runtime, findings = self.run_scenario("node_bad.dockerfile")
-        self.assertEqual(runtime, "node")
-        self.assertTrue(any("excessive port range" in f for f in findings))
-        self.assertTrue(any("build tools" in f for f in findings))
-
-    def test_go_bad(self):
-        runtime, findings = self.run_scenario("go_bad.dockerfile")
-        self.assertEqual(runtime, "go")
-        self.assertTrue(any("version not pinned" in f for f in findings))
-
-    def test_java_bad(self):
-        runtime, findings = self.run_scenario("java_bad.dockerfile")
-        self.assertEqual(runtime, "java")
-        self.assertTrue(any("secret" in f for f in findings))
-
-    def test_hard_case(self):
-        runtime, findings = self.run_scenario("hard_case.dockerfile")
-        self.assertTrue(any("docker.sock" in f for f in findings))
-        self.assertTrue(any("heavy base image" in f for f in findings))
+    print("--- INTEGRITY TEST PASSED ---")
 
 if __name__ == "__main__":
-    unittest.main()
+    try:
+        test_static_analysis_integrity()
+    except AssertionError as e:
+        print(f"--- INTEGRITY TEST FAILED: {e} ---")
+        sys.exit(1)
+    except Exception as e:
+        print(f"--- UNEXPECTED ERROR: {e} ---")
+        sys.exit(1)

@@ -21,7 +21,10 @@ export default function ActionPanel({
       setLoading(true)
       const res = await axios.post(
         `${API}/image/report`,
-        { image: container.image }
+        {
+          image: container.image,
+          id: container.id
+        }
       )
       onResult(res.data)
     } catch (err) {

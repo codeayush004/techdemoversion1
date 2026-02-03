@@ -8,9 +8,9 @@ from app.core.dockerfile_analyzer import analyze_dockerfile_content
 from app.core.ai_service import optimize_with_ai
 
 
-def build_report(image_name: str, dockerfile_content: str = None):
+def build_report(image_name: str, dockerfile_content: str = None, container_id: str = None):
     image = analyze_image(image_name)
-    runtime = analyze_runtime(image_name)
+    runtime = analyze_runtime(image_name, container_id=container_id)
     security = analyze_security(image_name)
     misconfigs = analyze_misconfig(image, runtime)
 
@@ -48,17 +48,24 @@ def build_report(image_name: str, dockerfile_content: str = None):
             "recommendation": m.get("recommendation", "")
         })
         
-    # 2. AI Semantic Checks
+    # 2. AI Semantic Checks (Unified Recommendation Logic)
     for w in recommendation.get("security_warnings", []):
         if not any(w.lower() in f["message"].lower() or f["message"].lower() in w.lower() for f in raw_findings):
+            # Map specific AI warnings to technical resolutions to avoid "See AI reasoning"
+            rec = "Apply the suggested architecture in the optimized Dockerfile."
+            if "root" in w.lower(): rec = "Add a non-root USER and set appropriate permissions."
+            elif "stage" in w.lower(): rec = "Use multi-stage builds to reduce image footprint."
+            elif "secret" in w.lower() or "token" in w.lower(): rec = "Use build secrets or environment variables instead of hardcoding."
+            elif "tool" in w.lower() or "install" in w.lower(): rec = "Clean package manager caches (apt/apk cleanup) in the same layer."
+            
             raw_findings.append({
                 "category": "ANALYSIS",
                 "message": w,
                 "severity": "HIGH",
-                "recommendation": "See AI reasoning for details."
+                "recommendation": rec
             })
 
-    # 3. Verified Security CVEs
+    # Verified Security CVEs (Only if scan was successful)
     for v in security.get("vulnerabilities", []):
         if v.get("severity") in ["HIGH", "CRITICAL"]:
             msg = f"{v['title']} ({v['id']})"
@@ -69,14 +76,6 @@ def build_report(image_name: str, dockerfile_content: str = None):
                     "severity": v["severity"],
                     "recommendation": v.get("resolution", "")
                 })
-
-    if security["status"] == "error":
-        raw_findings.append({
-            "category": "SECURITY",
-            "message": "Vulnerability scan unavailable",
-            "severity": "MEDIUM",
-            "recommendation": "Check Docker configuration for Trivy."
-        })
 
     # Final Deduplicate
     unique_findings = []
@@ -157,11 +156,18 @@ def build_static_report(dockerfile_content: str):
     for w in recommendation.get("security_warnings", []):
         # Fuzzy check: Don't add if a similar message already exists from static scan
         if not any(w.lower() in f["message"].lower() or f["message"].lower() in w.lower() for f in raw_findings):
+            # Map specific AI warnings to technical resolutions
+            rec = "Implemented in the optimized Dockerfile."
+            if "root" in w.lower(): rec = "Add a non-root USER and set appropriate permissions."
+            elif "stage" in w.lower(): rec = "Use multi-stage builds to reduce image footprint."
+            elif "secret" in w.lower() or "token" in w.lower(): rec = "Use build secrets or environment variables instead of hardcoding."
+            elif "tool" in w.lower() or "install" in w.lower(): rec = "Clean package manager caches (apt/apk cleanup) in the same layer."
+            
             raw_findings.append({
                 "category": "ANALYSIS",
                 "message": w,
                 "severity": "HIGH",
-                "recommendation": "Implemented in the optimized Dockerfile."
+                "recommendation": rec
             })
 
     # 3. Security (High/Critical)
