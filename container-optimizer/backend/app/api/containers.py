@@ -30,14 +30,13 @@ def list_containers():
             except: pass
 
             # NOTE: We skip c.stats(stream=False) here because it is too slow (blocks for ~1s per container)
-            # Memory usage will be fetched only during deep analysis or reported as 0.0 in the list view.
+            # Memory usage will be fetched only during deep analysis.
             results.append({
                 "id": c.short_id,
                 "name": c.name,
                 "image": c.image.tags[0] if (hasattr(c.image, "tags") and c.image.tags) else c.short_id,
                 "status": c.status,
                 "image_size_mb": image_size_mb,
-                "memory_usage_mb": 0.0, # Optimized for speed
             })
 
         except Exception:
@@ -60,18 +59,15 @@ def image_report(request: RuntimeScanRequest):
 class DockerfileRequest(BaseModel):
     content: str
 
-
-
 @router.post("/analyze-dockerfile")
 def analyze_dockerfile(request: DockerfileRequest):
     return build_static_report(request.content)
 
 
-
-
 class GitHubScanRequest(BaseModel):
     url: str
     path: Optional[str] = None
+    token: Optional[str] = None
 
 @router.post("/scan-github")
 def scan_github(request: GitHubScanRequest):
@@ -81,9 +77,10 @@ def scan_github(request: GitHubScanRequest):
     
     # 1. Handle Path Discovery or Targeted Analysis
     path = request.path
+    token = request.token
     if not path:
         # Discovery Phase
-        all_paths = find_all_dockerfiles(owner, repo)
+        all_paths = find_all_dockerfiles(owner, repo, token=token)
         if not all_paths:
             raise HTTPException(status_code=404, detail="No Dockerfile found in repository")
         
@@ -99,7 +96,7 @@ def scan_github(request: GitHubScanRequest):
         path = all_paths[0]
 
     # 2. Analyze the specific path
-    content = get_file_content(owner, repo, path)
+    content = get_file_content(owner, repo, path, token=token)
     if not content:
         raise HTTPException(status_code=404, detail=f"Failed to fetch Dockerfile at {path}")
     
@@ -131,6 +128,7 @@ class CreateBulkPRRequest(BaseModel):
     base_branch: Optional[str] = None
     pr_title: Optional[str] = None
     commit_message: Optional[str] = None
+    token: Optional[str] = None
 
 @router.post("/create-bulk-pr")
 def create_bulk_pr(request: CreateBulkPRRequest):
@@ -147,7 +145,8 @@ def create_bulk_pr(request: CreateBulkPRRequest):
             branch_name=request.branch_name,
             base_branch=request.base_branch,
             pr_title=request.pr_title,
-            commit_message=request.commit_message
+            commit_message=request.commit_message,
+            token=request.token
         )
         return {"message": f"Successfully created PR: {pr_link}" if "github.com" in pr_link else pr_link}
     except Exception as e:

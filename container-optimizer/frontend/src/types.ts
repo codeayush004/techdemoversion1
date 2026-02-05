@@ -4,7 +4,6 @@ export type Container = {
   image: string
   status: string
   image_size_mb: number
-  memory_usage_mb: number
 }
 
 export type Misconfiguration = {

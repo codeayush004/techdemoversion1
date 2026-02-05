@@ -45,7 +45,6 @@ export default function ContainerTable({
             <th className="p-2 text-left">Image</th>
             <th className="p-2 text-left">Status</th>
             <th className="p-2 text-right">Image (MB)</th>
-            <th className="p-2 text-right">Memory (MB)</th>
             <th className="p-2"></th>
           </tr>
         </thead>
@@ -60,9 +59,6 @@ export default function ContainerTable({
               <td className="p-2">{c.status}</td>
               <td className="p-2 text-right">
                 {c.image_size_mb.toFixed(2)}
-              </td>
-              <td className="p-2 text-right">
-                {c.memory_usage_mb.toFixed(2)}
               </td>
               <td className="p-2 text-right">
                 <button

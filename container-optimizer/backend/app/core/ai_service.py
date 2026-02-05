@@ -48,8 +48,9 @@ CRITICAL MANDATES for logic accuracy:
    - NEVER suggest a tool (curl, wget, ping) in a CMD or HEALTHCHECK unless you explicitly install it in the SAME stage using a package manager (apt/apk).
    - NEVER assume files exist unless shown in the original Dockerfile or build commands.
 2. CONSISTENCY:
-   - Match the base image family (Debian/Ubuntu vs Alpine). If the original is Debian, the optimized version MUST stay Debian-based (use -slim or -bookworm).
-   - Use `python:3.11-slim-bookworm` (Debian) or `python:3.11-alpine` (Alpine). 
+   - Match the base image family (Debian/Ubuntu vs Alpine). If the original is Debian, the optimized version MUST stay Debian-based.
+   - TAG ACCURACY: Use `python:3.11-slim-bookworm` or `node:20-slim`. 
+   - IMPORTANT: For Nginx, Redis, Postgres, and MySQL, DO NOT add '-slim' as it often doesn't exist for these; use the stable version tag (e.g., `nginx:1.27.2`) or the `-alpine` variant if size is the priority.
 3. EXPERT REASONING:
    - Your 'explanation' must provide technical 'Why' (e.g., "Reduced image size by 40% using multi-stage builds and excluding build-time dependencies like gcc").
 4. SECURITY:

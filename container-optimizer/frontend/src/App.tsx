@@ -14,6 +14,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [view, setView] = useState<"runtime" | "static" | "github" | "registry">("runtime")
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [githubToken, setGithubToken] = useState<string | null>(localStorage.getItem("gh_token"))
 
   const notify = (type: Toast['type'], message: string, link?: Toast['link']) => {
     const id = Math.random().toString(36).substring(2, 9)
@@ -109,7 +110,17 @@ export default function App() {
           </div>
         ) : view === "github" ? (
           <div className="animate-in fade-in slide-in-from-right-8 duration-1000">
-            <GitHubScanner onResult={setResult} setLoading={setLoading} notify={notify} />
+            <GitHubScanner
+              onResult={setResult}
+              setLoading={setLoading}
+              notify={notify}
+              githubToken={githubToken}
+              setGithubToken={(token) => {
+                setGithubToken(token);
+                if (token) localStorage.setItem("gh_token", token);
+                else localStorage.removeItem("gh_token");
+              }}
+            />
           </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-left-8 duration-1000">

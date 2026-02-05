@@ -1,12 +1,61 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import axios from "axios"
 
-export default function GitHubScanner({ onResult, setLoading, notify }: { onResult: (res: any) => void, setLoading: (l: boolean) => void, notify: (type: 'success' | 'error' | 'info', message: string, link?: { label: string, url: string }) => void }) {
+export default function GitHubScanner({ onResult, setLoading, notify, githubToken, setGithubToken }: {
+    onResult: (res: any) => void,
+    setLoading: (l: boolean) => void,
+    notify: (type: 'success' | 'error' | 'info', message: string, link?: { label: string, url: string }) => void,
+    githubToken: string | null,
+    setGithubToken: (token: string | null) => void
+}) {
     const [repoUrl, setRepoUrl] = useState("")
+    const [repos, setRepos] = useState<any[]>([])
+    const [showRepoDropdown, setShowRepoDropdown] = useState(false)
     const [discoveryResult, setDiscoveryResult] = useState<{ paths: string[], url: string } | null>(null)
     const [optimizedResults, setOptimizedResults] = useState<Record<string, any>>({})
     const [activePath, setActivePath] = useState<string | null>(null)
     const [pushing, setPushing] = useState<string | boolean>(false) // string for path, true for ALL
+
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            if (event.data?.type === 'GITHUB_AUTH_SUCCESS' && event.data?.token) {
+                setGithubToken(event.data.token)
+                notify("success", "GitHub successfully connected!")
+            }
+        }
+        window.addEventListener('message', handleMessage)
+        return () => window.removeEventListener('message', handleMessage)
+    }, [])
+
+    useEffect(() => {
+        if (githubToken) {
+            fetchUserRepos()
+        } else {
+            setRepos([])
+        }
+    }, [githubToken])
+
+    const fetchUserRepos = async () => {
+        try {
+            const res = await axios.get("https://api.github.com/user/repos?sort=updated&per_page=100", {
+                headers: { Authorization: `token ${githubToken}` }
+            })
+            setRepos(res.data)
+        } catch (err) {
+            console.error("Failed to fetch repos", err)
+        }
+    }
+
+    const handleLogin = () => {
+        const width = 600, height = 700
+        const left = window.screenX + (window.outerWidth - width) / 2
+        const top = window.screenY + (window.outerHeight - height) / 2
+        window.open(
+            "http://127.0.0.1:8000/api/auth/github/login",
+            "github_auth",
+            `width=${width},height=${height},left=${left},top=${top}`
+        )
+    }
 
     const handleScan = async (selectedPath?: string) => {
         const url = discoveryResult?.url || repoUrl
@@ -16,7 +65,8 @@ export default function GitHubScanner({ onResult, setLoading, notify }: { onResu
         try {
             const res = await axios.post("http://127.0.0.1:8000/api/scan-github", {
                 url: url,
-                path: selectedPath
+                path: selectedPath,
+                token: githubToken
             })
 
             if (res.data.multi_service) {
@@ -51,7 +101,8 @@ export default function GitHubScanner({ onResult, setLoading, notify }: { onResu
 
             const res = await axios.post("http://127.0.0.1:8000/api/create-bulk-pr", {
                 url: discoveryResult?.url || repoUrl,
-                updates: updates
+                updates: updates,
+                token: githubToken
             })
 
             if (res.data.message.includes("https://github.com")) {
@@ -85,7 +136,8 @@ export default function GitHubScanner({ onResult, setLoading, notify }: { onResu
                 }],
                 branch_name: `optimize-${fileName.toLowerCase()}-${Math.random().toString(36).substring(7)}`,
                 pr_title: `✨ Optimized ${fileName} for ${getServiceName(path)}`,
-                commit_message: `refactor: optimize ${path} for performance and security`
+                commit_message: `refactor: optimize ${path} for performance and security`,
+                token: githubToken
             })
 
             if (res.data.message.includes("https://github.com")) {
@@ -129,7 +181,7 @@ export default function GitHubScanner({ onResult, setLoading, notify }: { onResu
             <div className="relative glass-card p-10 overflow-hidden">
                 <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-all duration-700 scale-150 rotate-12">
                     <svg className="w-32 h-32" fill="currentColor" viewBox="0 0 24 24">
-                        <path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019(0 0022 12c0-5.523-4.477-10-10-10z" clipRule="evenodd" />
+                        <path fillRule="evenodd" d="M12 2C6.477.2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.1.39-1.99 1.03-2.69a3.59 3.59 0 01.1-2.64s.84-.27 2.75 1.02c.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.64.7 1.03 1.6 1.03 2.69 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z" clipRule="evenodd" />
                     </svg>
                 </div>
 
@@ -143,33 +195,105 @@ export default function GitHubScanner({ onResult, setLoading, notify }: { onResu
                                     </div>
                                 </div>
                                 <h2 className="text-4xl font-black text-white mb-2 tracking-tight">Git Repository Scan</h2>
-                                <p className="text-zinc-500 text-base font-medium max-w-2xl leading-relaxed">
-                                    Supply your repository URL. Our analysis engine will traverse the architecture, identify the Dockerfile, and generate a hyper-optimized infrastructure update.
+                                <p className="text-zinc-500 text-base font-medium max-w-2xl leading-relaxed mb-8">
+                                    Supply your repository URL or connect your account to browse private repositories. Our analysis engine will generate hyper-optimized infrastructure updates.
                                 </p>
+                                {!githubToken ? (
+                                    <button
+                                        onClick={handleLogin}
+                                        className="mb-10 px-6 py-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-2xl border border-zinc-800 flex items-center gap-3 transition-all group/login"
+                                    >
+                                        <svg className="w-5 h-5 opacity-50 group-hover/login:opacity-100 transition-opacity" fill="currentColor" viewBox="0 0 24 24">
+                                            <path fillRule="evenodd" d="M12 2C6.477.2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.1.39-1.99 1.03-2.69a3.59 3.59 0 01.1-2.64s.84-.27 2.75 1.02c.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.64.7 1.03 1.6 1.03 2.69 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z" clipRule="evenodd" />
+                                        </svg>
+                                        <span className="text-xs font-black uppercase tracking-widest">Connect GitHub Account</span>
+                                    </button>
+                                ) : (
+                                    <div className="mb-10 flex items-center gap-4 animate-in fade-in slide-in-from-left-4">
+                                        <div className="px-4 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                                            GitHub Connected
+                                        </div>
+                                        <button
+                                            onClick={() => setGithubToken(null)}
+                                            className="text-zinc-600 hover:text-white text-[10px] font-black uppercase tracking-widest transition-colors"
+                                        >
+                                            Disconnect
+                                        </button>
+                                    </div>
+                                )}
                             </header>
 
-                            <div className="flex flex-col sm:flex-row gap-4">
-                                <div className="flex-1 relative group/input">
-                                    <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
-                                        <span className="text-zinc-600 text-lg">🔗</span>
+                            <div className="relative">
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <div className="flex-1 relative group/input">
+                                        <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
+                                            <span className="text-zinc-600 text-lg">🔗</span>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            className="w-full bg-black/40 text-white font-mono text-sm pl-14 pr-6 py-5 rounded-3xl border-2 border-zinc-800 transition-all focus:border-indigo-500/50 focus:bg-black/60 outline-none"
+                                            placeholder="https://github.com/owner/repository"
+                                            value={repoUrl}
+                                            onChange={(e) => {
+                                                setRepoUrl(e.target.value)
+                                                if (githubToken) setShowRepoDropdown(true)
+                                            }}
+                                            onFocus={() => githubToken && setShowRepoDropdown(true)}
+                                            onKeyDown={(e) => e.key === "Enter" && handleScan()}
+                                        />
+
+                                        {showRepoDropdown && repos.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 mt-4 bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl z-50 max-h-80 overflow-y-auto backdrop-blur-xl animate-in fade-in zoom-in-95 duration-300">
+                                                <div className="p-4 border-b border-zinc-800 sticky top-0 bg-zinc-950/80 backdrop-blur-md">
+                                                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Select Repository</span>
+                                                </div>
+                                                {repos.filter(r => r.full_name.toLowerCase().includes(repoUrl.toLowerCase()) || r.name.toLowerCase().includes(repoUrl.toLowerCase())).map(repo => (
+                                                    <button
+                                                        key={repo.id}
+                                                        onClick={() => {
+                                                            setRepoUrl(repo.html_url)
+                                                            setShowRepoDropdown(false)
+                                                        }}
+                                                        className="w-full p-6 text-left hover:bg-white/5 transition-colors flex items-center justify-between group/item"
+                                                    >
+                                                        <div>
+                                                            <div className="text-sm font-black text-white mb-0.5">{repo.name}</div>
+                                                            <div className="text-[10px] text-zinc-500 font-mono tracking-tight">{repo.full_name}</div>
+                                                        </div>
+                                                        {repo.private && (
+                                                            <span className="px-2 py-1 rounded-md bg-zinc-800 text-zinc-500 text-[8px] font-black uppercase">Private</span>
+                                                        )}
+                                                    </button>
+                                                ))}
+                                                {repos.length > 0 && (
+                                                    <div className="p-4 border-t border-zinc-800 bg-zinc-900/50">
+                                                        <button
+                                                            onClick={() => setShowRepoDropdown(false)}
+                                                            className="w-full text-[10px] font-black text-zinc-400 uppercase tracking-widest hover:text-white transition-colors"
+                                                        >
+                                                            Close List
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-                                    <input
-                                        type="text"
-                                        className="w-full bg-black/40 text-white font-mono text-sm pl-14 pr-6 py-5 rounded-3xl border-2 border-zinc-800 transition-all focus:border-indigo-500/50 focus:bg-black/60 outline-none"
-                                        placeholder="https://github.com/owner/repository"
-                                        value={repoUrl}
-                                        onChange={(e) => setRepoUrl(e.target.value)}
-                                        onKeyDown={(e) => e.key === "Enter" && handleScan()}
-                                    />
+                                    <button
+                                        onClick={() => handleScan()}
+                                        className="px-10 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[2rem] font-black transition-all shadow-xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 group/btn"
+                                        disabled={!repoUrl.trim()}
+                                    >
+                                        <span>DEPLOY ANALYZER</span>
+                                        <span className="group-hover:translate-x-1 transition-transform">→</span>
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={() => handleScan()}
-                                    className="px-10 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[2rem] font-black transition-all shadow-xl shadow-indigo-600/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3 group/btn"
-                                    disabled={!repoUrl.trim()}
-                                >
-                                    <span>DEPLOY ANALYZER</span>
-                                    <span className="group-hover:translate-x-1 transition-transform">→</span>
-                                </button>
+                                {showRepoDropdown && (
+                                    <div
+                                        className="fixed inset-0 z-40"
+                                        onClick={() => setShowRepoDropdown(false)}
+                                    />
+                                )}
                             </div>
                         </>
                     ) : (
@@ -183,7 +307,7 @@ export default function GitHubScanner({ onResult, setLoading, notify }: { onResu
                                     {Object.keys(optimizedResults).length > 0 && (
                                         <button
                                             onClick={handlePushAll}
-                                            disabled={pushing}
+                                            disabled={!!pushing}
                                             className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2"
                                         >
                                             {pushing === true ? "PUSHING..." : `PUSH ${Object.keys(optimizedResults).length} UPDATES →`}
