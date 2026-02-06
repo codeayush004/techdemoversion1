@@ -6,6 +6,7 @@ import DockerfileUpload from "./components/DockerfileUpload"
 import GitHubScanner from "./components/GitHubScanner"
 import DockerHubScanner from "./components/DockerHubScanner"
 import Notification, { type Toast } from "./components/Notification"
+import LocalAgentConnect from "./components/LocalAgentConnect"
 import type { Container } from "./types"
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
   const [view, setView] = useState<"runtime" | "static" | "github" | "registry">("runtime")
   const [toasts, setToasts] = useState<Toast[]>([])
   const [githubToken, setGithubToken] = useState<string | null>(localStorage.getItem("gh_token"))
+  const [remoteContainers, setRemoteContainers] = useState<Container[] | null>(null)
 
   const notify = (type: Toast['type'], message: string, link?: Toast['link']) => {
     const id = Math.random().toString(36).substring(2, 9)
@@ -90,10 +92,29 @@ export default function App() {
                     <p className="text-zinc-500 text-sm font-medium">Analyze and optimize containers currently running in your ecosystem.</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="px-4 py-1.5 rounded-full bg-zinc-950 border border-zinc-800 text-[10px] font-black uppercase text-zinc-500 tracking-tighter">Live Monitor</span>
+                    <LocalAgentConnect
+                      onDataReceived={setRemoteContainers}
+                      notify={notify}
+                    />
+                    <span className="px-4 py-1.5 rounded-full bg-zinc-950 border border-zinc-800 text-[10px] font-black uppercase text-zinc-500 tracking-tighter">
+                      {remoteContainers ? "Remote Fleet" : "Live Monitor"}
+                    </span>
                   </div>
                 </header>
-                <ContainerTable onSelect={setSelected} />
+                <ContainerTable
+                  onSelect={setSelected}
+                  externalData={remoteContainers}
+                />
+                {remoteContainers && (
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      onClick={() => setRemoteContainers(null)}
+                      className="text-[10px] text-zinc-600 hover:text-white uppercase font-black tracking-widest transition-colors"
+                    >
+                      ← Back to Local Fleet
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

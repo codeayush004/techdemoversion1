@@ -6,20 +6,26 @@ const API = "http://127.0.0.1:8000/api"
 
 export default function ContainerTable({
   onSelect,
+  externalData = null
 }: {
   onSelect: (c: Container) => void
+  externalData?: Container[] | null
 }) {
   const [containers, setContainers] = useState<Container[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchContainers()
-  }, [])
+    if (externalData) {
+      setContainers(externalData)
+      setLoading(false)
+    } else {
+      fetchContainers()
+    }
+  }, [externalData])
 
   async function fetchContainers() {
     try {
       const res = await axios.get(`${API}/containers`)
-      console.log("Containers from API:", res.data)
       setContainers(res.data)
     } catch (err) {
       console.error("Failed to fetch containers", err)
@@ -54,7 +60,14 @@ export default function ContainerTable({
               key={c.id}
               className="border-t border-zinc-800 hover:bg-zinc-900"
             >
-              <td className="p-2">{c.name}</td>
+              <td className="p-2">
+                <div className="flex items-center gap-2">
+                  {c.name}
+                  {externalData && (
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[8px] font-black uppercase">Local</span>
+                  )}
+                </div>
+              </td>
               <td className="p-2 font-mono text-xs">{c.image}</td>
               <td className="p-2">{c.status}</td>
               <td className="p-2 text-right">
