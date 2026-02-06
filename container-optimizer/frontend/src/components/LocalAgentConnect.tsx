@@ -94,7 +94,7 @@ export default function LocalAgentConnect({ onDataReceived, notify }: {
                                     <div>
                                         <p className="text-xs text-zinc-400 mb-2">Run this command in your local terminal:</p>
                                         <code className="block w-full bg-black/40 p-4 rounded-xl border border-white/5 text-[10px] font-mono text-indigo-400">
-                                            python agent.py --code {syncCode} --url {window.location.origin}/api
+                                            python agent.py --code {syncCode} --url {API}
                                         </code>
                                     </div>
                                 </div>
