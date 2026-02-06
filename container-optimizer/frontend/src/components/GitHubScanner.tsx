@@ -254,6 +254,8 @@ export default function GitHubScanner({ onResult, setLoading, notify, githubToke
                                                         onClick={() => {
                                                             setRepoUrl(repo.html_url)
                                                             setShowRepoDropdown(false)
+                                                            // Auto-trigger scan for convenience
+                                                            setTimeout(() => handleScan(), 100);
                                                         }}
                                                         className="w-full p-6 text-left hover:bg-white/5 transition-colors flex items-center justify-between group/item"
                                                     >
@@ -288,6 +290,46 @@ export default function GitHubScanner({ onResult, setLoading, notify, githubToke
                                         <span className="group-hover:translate-x-1 transition-transform">→</span>
                                     </button>
                                 </div>
+
+                                {githubToken && !repoUrl && repos.length > 0 && (
+                                    <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="text-xs font-black text-zinc-500 uppercase tracking-widest">Connect & Browse Your Repositories</h3>
+                                            <span className="text-[10px] text-zinc-600 font-mono">Found {repos.length} matches</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                            {repos.slice(0, 6).map(repo => (
+                                                <button
+                                                    key={repo.id}
+                                                    onClick={() => {
+                                                        setRepoUrl(repo.html_url)
+                                                        handleScan()
+                                                    }}
+                                                    className="p-6 bg-zinc-900/40 border border-zinc-800/50 rounded-3xl text-left hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all group/repo active:scale-[0.98]"
+                                                >
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <div className="w-8 h-8 rounded-xl bg-zinc-800 flex items-center justify-center text-lg group-hover/repo:scale-110 transition-transform">
+                                                            📁
+                                                        </div>
+                                                        <div className="flex-1 overflow-hidden">
+                                                            <div className="text-xs font-black text-white truncate group-hover/repo:text-indigo-400 transition-colors">{repo.name}</div>
+                                                            <div className="text-[10px] text-zinc-600 font-mono truncate">{repo.full_name}</div>
+                                                        </div>
+                                                    </div>
+                                                    {repo.description && (
+                                                        <p className="text-[10px] text-zinc-500 line-clamp-1 mb-4 italic">"{repo.description}"</p>
+                                                    )}
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] text-zinc-700 font-black uppercase">Start Scan</span>
+                                                        <svg className="w-4 h-4 text-zinc-700 group-hover/repo:text-indigo-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                                        </svg>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 {showRepoDropdown && (
                                     <div
                                         className="fixed inset-0 z-40"
