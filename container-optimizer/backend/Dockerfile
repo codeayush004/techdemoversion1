@@ -19,7 +19,7 @@ COPY . .
 
 # Add a non-root user for security
 RUN useradd -m appuser && chown -R appuser:appuser /app
-USER appuser
+# USER appuser
 
 EXPOSE 8000
 
