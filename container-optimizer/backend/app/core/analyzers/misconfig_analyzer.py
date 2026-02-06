@@ -1,3 +1,5 @@
+import re
+
 def analyze_misconfig(image_analysis: dict, runtime_analysis: dict):
     """
     Detect Docker image misconfigurations and bad practices.
@@ -187,5 +189,30 @@ def analyze_misconfig(image_analysis: dict, runtime_analysis: dict):
                     "message": f"Exposure of {risk_label} ({source}) detected",
                     "recommendation": f"Remove bind mount for {source}. Re-architect to avoid host level access."
                 })
+
+        # 3. Runtime Environment Secret Detection
+        env_vars = inst.get("env", [])
+        # Fuzzy patterns to catch variants like DB_PASSWORD_BASE64 or API_KEY_STRICT
+        secret_patterns = [
+            r"(?i)(password|secret|api_key|token|access_key|auth_token).*",
+        ]
+        
+        for env in env_vars:
+            try:
+                key, val = env.split("=", 1)
+                # Filter out obvious false positives (empty or very short values)
+                if len(val) < 4: continue
+                
+                for pattern in secret_patterns:
+                    if re.search(pattern, key):
+                        issues.append({
+                            "id": "RUNTIME_EXPOSED_SECRET",
+                            "severity": "HIGH",
+                            "message": f"Potential exposed secret in runtime environment variable: {key}",
+                            "recommendation": "Use Docker Secrets (Docker Swarm/K8s) or a secure vault instead of environment variables for production secrets."
+                        })
+                        break
+            except ValueError:
+                continue
 
     return issues

@@ -13,6 +13,18 @@ def build_report(image_name: str, dockerfile_content: str = None, container_id: 
     runtime = analyze_runtime(image_name, container_id=container_id)
     security = analyze_security(image_name)
     misconfigs = analyze_misconfig(image, runtime)
+    
+    # NEW: If dockerfile is attached to a running container scan, 
+    # we merge its static findings too!
+    if dockerfile_content:
+        static_analysis = analyze_dockerfile_content(dockerfile_content)
+        static_misconfigs = analyze_misconfig(static_analysis, runtime)
+        # Check for secrets statically in the pasted text
+        static_secrets = _detect_static_secrets(dockerfile_content)
+        
+        # Merge them (the deductive loop later will clean up repeats)
+        misconfigs.extend(static_misconfigs)
+        misconfigs.extend(static_secrets)
 
     # Prepare context for AI
     image_context = {
@@ -77,15 +89,47 @@ def build_report(image_name: str, dockerfile_content: str = None, container_id: 
                     "recommendation": v.get("resolution", "")
                 })
 
-    # Final Deduplicate
+    # Final Semantic Deduplicate
     unique_findings = []
-    seen = set()
+    seen_concepts = set()
+    
+    # Mapping of keywords to "Semantic Concepts"
+    concept_map = {
+        "root": "ROOT_USER", 
+        "user": "ROOT_USER",
+        "secret": "SECRET", 
+        "token": "SECRET", 
+        "password": "SECRET",
+        "healthcheck": "HEALTHCHECK",
+        "stage": "MULTI_STAGE", 
+        "footprint": "MULTI_STAGE", 
+        "layer": "MULTI_STAGE",
+        "pin": "VERSION_PIN", 
+        "latest": "VERSION_PIN"
+    }
+
     for f in raw_findings:
-        if f["message"].lower().strip() not in seen:
-            unique_findings.append(f)
-            seen.add(f["message"].lower().strip())
+        msg = f["message"].lower()
+        # Find which concept this finding belongs to
+        finding_concept = None
+        for kw, concept in concept_map.items():
+            if kw in msg:
+                finding_concept = concept
+                break
+        
+        # If it's a known concept, only add if we haven't seen it
+        if finding_concept:
+            if finding_concept not in seen_concepts:
+                unique_findings.append(f)
+                seen_concepts.add(finding_concept)
+        else:
+            # For unique security CVEs or other findings, use exact match
+            if msg not in seen_concepts:
+                unique_findings.append(f)
+                seen_concepts.add(msg)
 
     return {
+        "id": container_id,
         "image": image_name,
         "summary": {
             "image_size_mb": image["total_size_mb"],
@@ -182,14 +226,40 @@ def build_static_report(dockerfile_content: str):
                     "recommendation": v.get("resolution", "")
                 })
             
-    # Final Deduplication & Cleanup
+    # Final Semantic Deduplicate
     unique_findings = []
-    seen_msgs = set()
+    seen_concepts = set()
+    
+    concept_map = {
+        "root": "ROOT_USER", 
+        "user": "ROOT_USER",
+        "secret": "SECRET", 
+        "token": "SECRET", 
+        "password": "SECRET",
+        "healthcheck": "HEALTHCHECK",
+        "stage": "MULTI_STAGE", 
+        "footprint": "MULTI_STAGE", 
+        "layer": "MULTI_STAGE",
+        "pin": "VERSION_PIN", 
+        "latest": "VERSION_PIN"
+    }
+
     for f in raw_findings:
-        msg_norm = f["message"].lower().strip()
-        if msg_norm not in seen_msgs:
-            unique_findings.append(f)
-            seen_msgs.add(msg_norm)
+        msg = f["message"].lower()
+        finding_concept = None
+        for kw, concept in concept_map.items():
+            if kw in msg:
+                finding_concept = concept
+                break
+        
+        if finding_concept:
+            if finding_concept not in seen_concepts:
+                unique_findings.append(f)
+                seen_concepts.add(finding_concept)
+        else:
+            if msg not in seen_concepts:
+                unique_findings.append(f)
+                seen_concepts.add(msg)
 
     return {
         "image": "uploaded_dockerfile",

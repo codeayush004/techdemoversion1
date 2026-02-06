@@ -24,6 +24,7 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
     try {
       const payload = {
         image: currentResult.image,
+        id: currentResult.id,
         dockerfile_content: pastedDockerfile
       }
       const res = await axios.post("http://127.0.0.1:8000/api/image/report", payload)
@@ -66,7 +67,7 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
       {/* Refinement Section for Runtime Scans */}
       {!isStatic && !isGithub && (
         <div className="relative group overflow-hidden glass-card p-1 border-white/10">
-          <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-duration-700" />
+          <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-duration-700 pointer-events-none" />
           <div className="relative p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
               <h3 className="text-2xl font-black text-white flex items-center gap-3">
@@ -144,9 +145,9 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
                 </span>
               </div>
               {f.recommendation && (
-                <div className="mt-4 pt-4 border-t border-white/5">
-                  <p className="text-zinc-400 text-sm leading-relaxed break-words">
-                    <span className="text-zinc-600 font-black uppercase text-[10px] tracking-widest block mb-1">Recommended Resolution</span>
+                <div className="mt-6 p-5 rounded-2xl bg-white/5 border border-white/5 group-hover:border-white/10 transition-all duration-500">
+                  <span className="text-indigo-400 font-black uppercase text-[10px] tracking-widest block mb-2 opacity-80">Recommended Resolution</span>
+                  <p className="text-zinc-100 text-sm leading-relaxed font-medium">
                     {f.recommendation}
                   </p>
                 </div>
