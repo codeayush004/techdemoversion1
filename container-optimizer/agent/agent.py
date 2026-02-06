@@ -31,6 +31,7 @@ def scan_local_containers(sync_code, api_base_url):
                     "name": container.name,
                     "image": container.image.tags[0] if container.image.tags else details['Config']['Image'],
                     "status": container.status,
+                    "image_size_mb": container.image.attrs.get('Size', 0) / (1024 * 1024),
                     "config": {
                         "Env": details['Config'].get('Env', []),
                         "User": details['Config'].get('User', ''),

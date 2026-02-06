@@ -72,7 +72,7 @@ export default function ContainerTable({
               <td className="p-2 font-mono text-xs">{c.image}</td>
               <td className="p-2">{c.status}</td>
               <td className="p-2 text-right">
-                {c.image_size_mb.toFixed(2)}
+                {c.image_size_mb ? c.image_size_mb.toFixed(2) : "0.00"}
               </td>
               <td className="p-2 text-right">
                 <button
