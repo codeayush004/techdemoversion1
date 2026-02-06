@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
 import axios from "axios"
 import type { Container } from "../types"
+import { API_BASE_URL } from "../config"
 
-const API = "http://127.0.0.1:8000/api"
+const API = API_BASE_URL
 
 export default function ContainerTable({
   onSelect,

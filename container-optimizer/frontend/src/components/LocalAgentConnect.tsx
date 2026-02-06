@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
+import { API_BASE_URL } from "../config"
 
-const API = "http://127.0.0.1:8000/api"
+const API = API_BASE_URL
 
 export default function LocalAgentConnect({ onDataReceived, notify }: {
     onDataReceived: (data: any) => void,

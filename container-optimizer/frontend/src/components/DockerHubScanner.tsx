@@ -1,5 +1,6 @@
 import { useState } from "react"
 import axios from "axios"
+import { API_BASE_URL } from "../config"
 
 export default function DockerHubScanner({ onResult, setLoading, notify }: { onResult: (res: any) => void, setLoading: (l: boolean) => void, notify: (type: 'success' | 'error' | 'info', message: string, link?: { label: string, url: string }) => void }) {
     const [imageName, setImageName] = useState("")
@@ -11,7 +12,7 @@ export default function DockerHubScanner({ onResult, setLoading, notify }: { onR
         notify("info", `Initiating deep pull and performance audit for ${imageName}...`)
 
         try {
-            const res = await axios.post("http://127.0.0.1:8000/api/scan-registry", {
+            const res = await axios.post(`${API_BASE_URL}/scan-registry`, {
                 image: imageName
             })
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
+import { API_BASE_URL } from "../config"
 
 export default function GitHubScanner({ onResult, setLoading, notify, githubToken, setGithubToken }: {
     onResult: (res: any) => void,
@@ -50,8 +51,9 @@ export default function GitHubScanner({ onResult, setLoading, notify, githubToke
         const width = 600, height = 700
         const left = window.screenX + (window.outerWidth - width) / 2
         const top = window.screenY + (window.outerHeight - height) / 2
+        const url = `${API_BASE_URL}/auth/github/login`
         window.open(
-            "http://127.0.0.1:8000/api/auth/github/login",
+            url,
             "github_auth",
             `width=${width},height=${height},left=${left},top=${top}`
         )
@@ -63,7 +65,7 @@ export default function GitHubScanner({ onResult, setLoading, notify, githubToke
 
         setLoading(true)
         try {
-            const res = await axios.post("http://127.0.0.1:8000/api/scan-github", {
+            const res = await axios.post(`${API_BASE_URL}/scan-github`, {
                 url: url,
                 path: selectedPath,
                 token: githubToken
@@ -99,7 +101,7 @@ export default function GitHubScanner({ onResult, setLoading, notify, githubToke
                 content: optimizedResults[p].optimization
             }))
 
-            const res = await axios.post("http://127.0.0.1:8000/api/create-bulk-pr", {
+            const res = await axios.post(`${API_BASE_URL}/create-bulk-pr`, {
                 url: discoveryResult?.url || repoUrl,
                 updates: updates,
                 token: githubToken
@@ -128,7 +130,7 @@ export default function GitHubScanner({ onResult, setLoading, notify, githubToke
         try {
             const fileName = path.split('/').pop() || 'Dockerfile'
             // Re-use bulk PR endpoint with single update for consistency
-            const res = await axios.post("http://127.0.0.1:8000/api/create-bulk-pr", {
+            const res = await axios.post(`${API_BASE_URL}/create-bulk-pr`, {
                 url: discoveryResult?.url || repoUrl,
                 updates: [{
                     path: path,
