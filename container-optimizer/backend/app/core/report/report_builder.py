@@ -8,6 +8,16 @@ from app.core.dockerfile_analyzer import analyze_dockerfile_content
 from app.core.ai_service import optimize_with_ai
 
 
+def _extract_tag(message: str):
+    """Extracts [TAG] from the beginning of a message."""
+    match = re.search(r"\[([A-Z0-9_]+)\]", message)
+    return match.group(1) if match else None
+
+def _normalize(text: str):
+    """Normalizes text for fuzzy matching."""
+    return re.sub(r'[^a-z0-9]', '', text.lower())
+
+
 def build_report(image_name: str, dockerfile_content: str = None, container_id: str = None):
     image = analyze_image(image_name)
     runtime = analyze_runtime(image_name, container_id=container_id)
@@ -50,17 +60,40 @@ def build_report(image_name: str, dockerfile_content: str = None, container_id: 
         
     # 2. AI Semantic Checks (Unified Recommendation Logic)
     for w in recommendation.get("security_warnings", []):
-        if not any(w.lower() in f["message"].lower() or f["message"].lower() in w.lower() for f in raw_findings):
+        ai_tag = _extract_tag(w)
+        w_clean = re.sub(r"\[[A-Z0-9_]+\]", "", w).strip()
+        
+        # Check against already added findings (usually rule-based misconfigs)
+        is_duplicate = False
+        for f in raw_findings:
+            f_id = f.get("id")
+            # 1. Match by Tag/ID
+            if ai_tag and f_id and ai_tag == f_id:
+                is_duplicate = True
+                break
+            
+            # 2. Fuzzy match by content
+            f_norm = _normalize(f["message"])
+            w_norm = _normalize(w_clean)
+            if w_norm in f_norm or f_norm in w_norm:
+                # Priority: If AI warning is descriptive or has a tag, it might be better,
+                # but for simplicity, we treat it as duplicate to existing rule-based.
+                is_duplicate = True
+                break
+        
+        if not is_duplicate:
             # Map specific AI warnings to technical resolutions to avoid "See AI reasoning"
             rec = "Apply the suggested architecture in the optimized Dockerfile."
-            if "root" in w.lower(): rec = "Add a non-root USER and set appropriate permissions."
-            elif "stage" in w.lower(): rec = "Use multi-stage builds to reduce image footprint."
-            elif "secret" in w.lower() or "token" in w.lower(): rec = "Use build secrets or environment variables instead of hardcoding."
-            elif "tool" in w.lower() or "install" in w.lower(): rec = "Clean package manager caches (apt/apk cleanup) in the same layer."
+            w_low = w_clean.lower()
+            if "root" in w_low: rec = "Add a non-root USER and set appropriate permissions."
+            elif "stage" in w_low: rec = "Use multi-stage builds to reduce image footprint."
+            elif "secret" in w_low or "token" in w_low: rec = "Use build secrets or environment variables instead of hardcoding."
+            elif "tool" in w_low or "install" in w_low: rec = "Clean package manager caches (apt/apk cleanup) in the same layer."
             
             raw_findings.append({
+                "id": ai_tag,
                 "category": "ANALYSIS",
-                "message": w,
+                "message": w_clean,
                 "severity": "HIGH",
                 "recommendation": rec
             })

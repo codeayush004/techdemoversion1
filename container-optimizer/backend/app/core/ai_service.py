@@ -56,6 +56,9 @@ CRITICAL MANDATES for logic accuracy:
 4. SECURITY:
    - Always implement a non-root USER with proper permissions.
    - Use fixed tags. NEVER use 'latest'.
+5. DEDUPLICATION TAGS:
+   - For every security warning, you MUST prefix it with a technical ID in brackets if applicable. 
+   - Examples: `[RUN_AS_ROOT]`, `[NO_VERSION_PINNING]`, `[MISSING_HEALTHCHECK]`, `[SECRET_EXPOSURE]`, `[HEAVY_IMAGE]`.
 """
 
     payload = {
