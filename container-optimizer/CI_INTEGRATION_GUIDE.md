@@ -48,18 +48,24 @@ In your GitHub Repository:
 2. Add a new repository secret: `OPTIMIZER_API_URL`.
    - Use your Azure public IP: `http://40.65.144.231:8000/api` (or your local tunnel if testing).
 
-## 🛡️ How the "Permission Gate" Works
+## 🛡️ How the "Interactive Permission" Gate Works
 1. When you open a PR, the scan runs automatically.
-2. It posts a side-by-side comparison in a PR comment.
-3. If findings are **HIGH** or **CRITICAL**, the CI check will **FAIL**.
-4. **To Proceed (Granting Permission):**
-   - **Option A (The Good Way):** Replace your Dockerfile content with the "Optimized Dockerfile Preview" provided in the comment.
-   - **Option B (The Fast Way):** If you want to bypass the gate for a specific reason, you can adjust the `--fail-on` flag in the workflow to `CRITICAL` or `OFF`.
+2. It posts a **Side-by-Side** comparison in your PR comments.
+3. The build is **strictly blocked** until you give permission.
 
-## 📈 CLI Usage Refrence
+### How to give Permission:
+- **Add Label: `✨ use-optimized`**
+  - Antigravity will automatically swap your Dockerfile with the AI-fixed version and build it for you.
+- **Add Label: `🐢 use-original`**
+  - Antigravity will stand down and build your original Dockerfile exactly as you wrote it.
+
+> [!NOTE]
+> You must create these two labels in your repository settings once for this to work.
+
+## 📈 CLI Usage Reference
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | `--file` | Path to Dockerfile | `Dockerfile` |
 | `--server` | Backend API URL | `http://localhost:8000/api` |
-| `--fail-on` | Severity threshold to fail | `HIGH` |
+| `--apply` | Overwrites the file with the AI version | `False` |
 | `--json` | Output raw JSON data | `False` |

@@ -70,9 +70,26 @@ jobs:
               body: comment
             });
 
-      - name: Final Gate
+      - name: Interpret Labels and Build
         run: |
-          if [ "${{ env.scan_exit_code }}" != "0" ]; then
-            echo "❌ Dockerfile failed security gate. Please review the PR comment for optimizations."
+          LABELS=$(jq -r '.[].name' <<EOF
+          ${{ toJson(github.event.pull_request.labels) }}
+          EOF
+          )
+          
+          if echo "$LABELS" | grep -q "✨ use-optimized"; then
+            echo "✅ Permission Granted: Using Optimized Dockerfile."
+            python3 bin/optimizer-cli.py --file Dockerfile --server "${{ secrets.OPTIMIZER_API_URL }}" --apply
+            echo "BUILD_SOURCE=OPTIMIZED" >> $GITHUB_ENV
+          elif echo "$LABELS" | grep -q "🐢 use-original"; then
+            echo "⚠️ Permission Granted: Using Original Dockerfile (User Override)."
+            echo "BUILD_SOURCE=ORIGINAL" >> $GITHUB_ENV
+          else
+            echo "⛔ Permission Required! Please add a label: '✨ use-optimized' or '🐢 use-original' to proceed."
             exit 1
           fi
+
+      - name: Build Docker Image
+        run: |
+          echo "Building with $BUILD_SOURCE version..."
+          docker build . -t my-app:latest

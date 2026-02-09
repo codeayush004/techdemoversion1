@@ -11,6 +11,7 @@ def main():
     parser.add_argument("--server", default="http://localhost:8000/api", help="Backend API URL")
     parser.add_argument("--fail-on", default="HIGH", choices=["LOW", "MEDIUM", "HIGH", "CRITICAL"], help="Fail the build if findings of this severity or higher are found")
     parser.add_argument("--json", action="store_true", help="Output results in JSON format")
+    parser.add_argument("--apply", action="store_true", help="Save the optimized Dockerfile to the path specified by --file")
     
     args = parser.parse_args()
 
@@ -34,6 +35,17 @@ def main():
             sys.exit(1)
 
         result = response.json()
+
+        if args.apply:
+            optimized_content = result.get("recommendation", {}).get("optimized_dockerfile")
+            if optimized_content:
+                with open(args.file, "w") as f:
+                    f.write(optimized_content)
+                print(f"✅ Successfully applied optimizations to {args.file}")
+                sys.exit(0)
+            else:
+                print("❌ Error: No optimization recommendation found to apply.")
+                sys.exit(1)
         
         if args.json:
             print(json.dumps(result, indent=2))
