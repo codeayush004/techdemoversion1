@@ -56,11 +56,14 @@ jobs:
               
               comment += `\n---\n\n`;
               comment += `### ✨ Optimized Dockerfile Preview\n`;
-              comment += `> [!TIP]\n`;
-              comment += `> Review the AI-generated optimization below. To accept these changes, run \`ag-ci apply\` or copy-paste into your Dockerfile.\n\n`;
-              
               const opt = result.recommendation?.optimized_dockerfile || "Optimization unavailable.";
               comment += "```dockerfile\n" + opt + "\n```\n";
+              
+              comment += `\n---\n\n`;
+              comment += `### 🚦 How to Proceed (Permission Required)\n`;
+              comment += `Choose how you want to build this Pull Request by adding one of the following labels:\n\n`;
+              comment += `- **Label \`✨ use-optimized\`**: I will rewrite your Dockerfile with the AI version and build it.\n`;
+              comment += `- **Label \`🐢 use-original\`**: I will proceed using your original Dockerfile.\n`;
             }
             
             github.rest.issues.createComment({
