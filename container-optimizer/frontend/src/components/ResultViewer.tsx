@@ -145,8 +145,8 @@ export default function ResultViewer({ result, notify }: { result: any, notify: 
               </div>
               {f.recommendation && (
                 <div className="mt-4 pt-4 border-t border-white/5">
-                  <p className="text-zinc-400 text-sm leading-relaxed break-words">
-                    <span className="text-zinc-600 font-black uppercase text-[10px] tracking-widest block mb-1">Recommended Resolution</span>
+                  <p className="text-white text-sm leading-relaxed break-words font-medium">
+                    <span className="text-zinc-500 font-black uppercase text-[10px] tracking-widest block mb-1">Recommended Resolution</span>
                     {f.recommendation}
                   </p>
                 </div>

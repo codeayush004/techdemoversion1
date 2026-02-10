@@ -132,7 +132,6 @@ class CreateBulkPRRequest(BaseModel):
 
 @router.post("/create-bulk-pr")
 def create_bulk_pr(request: CreateBulkPRRequest):
-    from app.core.github_service import full_bulk_pr_workflow
     owner, repo, branch = extract_repo_info(request.url)
     if not owner or not repo:
         raise HTTPException(status_code=400, detail="Invalid GitHub URL")

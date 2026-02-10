@@ -49,16 +49,18 @@ def build_report(image_name: str, dockerfile_content: str = None, container_id: 
         }
 
     raw_findings = []
-    # 1. Runtime Insights
+    # 1. Runtime Insights (Rule Engine)
     for m in misconfigs:
         raw_findings.append({
+            "id": m.get("id"),
             "category": "ANALYSIS",
             "message": m["message"],
             "severity": m.get("severity", "MEDIUM"),
-            "recommendation": m.get("recommendation", "")
+            "recommendation": m.get("recommendation", ""),
+            "source": "rules"
         })
         
-    # 2. AI Semantic Checks (Unified Recommendation Logic)
+    # 2. AI Semantic Checks (Deep Reasoning)
     for w in recommendation.get("security_warnings", []):
         ai_tag = _extract_tag(w)
         w_clean = re.sub(r"\[[A-Z0-9_]+\]", "", w).strip()
@@ -70,15 +72,16 @@ def build_report(image_name: str, dockerfile_content: str = None, container_id: 
             # 1. Match by Tag/ID
             if ai_tag and f_id and ai_tag == f_id:
                 is_duplicate = True
+                # Enhance existing finding with AI flavor if needed
+                f["source"] = "hybrid" # Mark as corroborated by AI
                 break
             
             # 2. Fuzzy match by content
             f_norm = _normalize(f["message"])
             w_norm = _normalize(w_clean)
             if w_norm in f_norm or f_norm in w_norm:
-                # Priority: If AI warning is descriptive or has a tag, it might be better,
-                # but for simplicity, we treat it as duplicate to existing rule-based.
                 is_duplicate = True
+                f["source"] = "hybrid"
                 break
         
         if not is_duplicate:
@@ -95,19 +98,30 @@ def build_report(image_name: str, dockerfile_content: str = None, container_id: 
                 "category": "ANALYSIS",
                 "message": w_clean,
                 "severity": "HIGH",
-                "recommendation": rec
+                "recommendation": rec,
+                "source": "ai"
             })
 
     # Verified Security CVEs (Only if scan was successful)
     for v in security.get("vulnerabilities", []):
         if v.get("severity") in ["HIGH", "CRITICAL"]:
-            msg = f"{v['title']} ({v['id']})"
-            if not any(v.get('id', 'unknown') in f["message"] for f in raw_findings):
+            v_id = v.get('id', 'unknown')
+            msg = f"{v['title']} ({v_id})"
+            
+            is_seen = False
+            for f in raw_findings:
+                if v_id in f["message"]:
+                    is_seen = True
+                    break
+            
+            if not is_seen:
                 raw_findings.append({
+                    "id": v_id,
                     "category": "SECURITY",
                     "message": msg,
                     "severity": v["severity"],
-                    "recommendation": v.get("resolution", "")
+                    "recommendation": v.get("resolution", ""),
+                    "source": "security_scanner"
                 })
 
     # Final Deduplicate
@@ -176,43 +190,71 @@ def build_static_report(dockerfile_content: str):
 
     raw_findings = []
     
-    # 1. Misconfigurations (Strict/Verified)
+    # 1. Misconfigurations (Rules Engine)
     for m in misconfigs:
         raw_findings.append({
+            "id": m.get("id"),
             "category": "ANALYSIS",
             "message": m["message"],
             "severity": m.get("severity", "MEDIUM"),
-            "recommendation": m.get("recommendation", "")
+            "recommendation": m.get("recommendation", ""),
+            "source": "rules"
         })
         
     # 2. AI (Deep Semantic Analysis)
     for w in recommendation.get("security_warnings", []):
-        # Fuzzy check: Don't add if a similar message already exists from static scan
-        if not any(w.lower() in f["message"].lower() or f["message"].lower() in w.lower() for f in raw_findings):
+        ai_tag = _extract_tag(w)
+        w_clean = re.sub(r"\[[A-Z0-9_]+\]", "", w).strip()
+
+        is_duplicate = False
+        for f in raw_findings:
+            f_id = f.get("id")
+            # 1. Match by Tag/ID
+            if ai_tag and f_id and ai_tag == f_id:
+                is_duplicate = True
+                f["source"] = "hybrid"
+                break
+            
+            # 2. Fuzzy match
+            f_norm = _normalize(f["message"])
+            w_norm = _normalize(w_clean)
+            if w_norm in f_norm or f_norm in w_norm:
+                is_duplicate = True
+                f["source"] = "hybrid"
+                break
+            
+        if not is_duplicate:
             # Map specific AI warnings to technical resolutions
             rec = "Implemented in the optimized Dockerfile."
-            if "root" in w.lower(): rec = "Add a non-root USER and set appropriate permissions."
-            elif "stage" in w.lower(): rec = "Use multi-stage builds to reduce image footprint."
-            elif "secret" in w.lower() or "token" in w.lower(): rec = "Use build secrets or environment variables instead of hardcoding."
-            elif "tool" in w.lower() or "install" in w.lower(): rec = "Clean package manager caches (apt/apk cleanup) in the same layer."
+            w_low = w_clean.lower()
+            if "root" in w_low: rec = "Add a non-root USER and set appropriate permissions."
+            elif "stage" in w_low: rec = "Use multi-stage builds to reduce image footprint."
+            elif "secret" in w_low or "token" in w_low: rec = "Use build secrets or environment variables instead of hardcoding."
+            elif "tool" in w_low or "install" in w_low: rec = "Clean package manager caches (apt/apk cleanup) in the same layer."
             
             raw_findings.append({
+                "id": ai_tag,
                 "category": "ANALYSIS",
-                "message": w,
+                "message": w_clean,
                 "severity": "HIGH",
-                "recommendation": rec
+                "recommendation": rec,
+                "source": "ai"
             })
 
     # 3. Security (High/Critical)
     for v in security.get("vulnerabilities", []):
         if v["severity"] in ["HIGH", "CRITICAL"]:
-            msg = f"{v['title']} ({v['id']})"
-            if not any(v['id'] in f["message"] for f in raw_findings):
+            v_id = v.get('id', 'unknown')
+            msg = f"{v['title']} ({v_id})"
+
+            if not any(v_id in f["message"] for f in raw_findings):
                 raw_findings.append({
+                    "id": v_id,
                     "category": "SECURITY",
                     "message": msg,
                     "severity": v["severity"],
-                    "recommendation": v.get("resolution", "")
+                    "recommendation": v.get("resolution", ""),
+                    "source": "security_scanner"
                 })
             
     # Final Deduplication & Cleanup
