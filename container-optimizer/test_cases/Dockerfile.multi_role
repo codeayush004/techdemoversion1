@@ -1,0 +1,26 @@
+# Challenge 2: The Messy Monolith
+# Problems:
+# 1. Combines Node and Python in one stage (Huge Image)
+# 2. Builds frontend assets in same stage as production run
+# 3. Node_modules and .git included in the build
+# 4. Running as root
+# 5. Overlapping dependencies
+
+FROM python:3.9-slim
+
+# Install node
+RUN apt-get update && apt-get install -y curl gnupg && \
+    curl -sL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .
+
+# Build frontend
+RUN cd frontend && npm install && npm run build
+
+# Build backend
+RUN pip install -r requirements.txt
+
+CMD ["python", "app.py"]

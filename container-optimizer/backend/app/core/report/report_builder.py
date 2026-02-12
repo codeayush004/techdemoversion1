@@ -228,7 +228,7 @@ def build_static_report(dockerfile_content: str):
             rec = "Implemented in the optimized Dockerfile."
             w_low = w_clean.lower()
             if "root" in w_low: rec = "Add a non-root USER and set appropriate permissions."
-            elif "stage" in w_low: rec = "Use multi-stage builds to reduce image footprint."
+            elif "stage" in w_low: rec = "Use multi-stage builds if significant size reduction or security separation (e.g. build secrets) is required."
             elif "secret" in w_low or "token" in w_low: rec = "Use build secrets or environment variables instead of hardcoding."
             elif "tool" in w_low or "install" in w_low: rec = "Clean package manager caches (apt/apk cleanup) in the same layer."
             

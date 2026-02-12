@@ -1,0 +1,22 @@
+# Challenge 1: The Binary Builder
+# Problems: 
+# 1. psycopg2-binary will fail if libpq-dev is missing at runtime (if built from source)
+# 2. Heaps of build dependencies (gcc, python3-dev) left in image
+# 3. Terrible order (copying . before pip)
+# 4. Running as root
+
+FROM python:3.9
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    libpq-dev \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .
+RUN pip install --no-cache-dir gunicorn psycopg2 numpy cryptography
+
+EXPOSE 8000
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "app:app"]

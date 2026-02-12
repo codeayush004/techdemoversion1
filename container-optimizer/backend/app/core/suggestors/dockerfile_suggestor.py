@@ -9,15 +9,14 @@ def suggest_dockerfile(image_analysis, runtime_analysis, misconfigs):
     if runtime == "python":
         dockerfile = _suggest_python()
         explanation += [
-            "Using multi-stage build to separate build dependencies from the runtime environment.",
-            "Utilizing python-slim as a base to reduce size and attack surface.",
+            "Using a slim base image to reduce initial footprint.",
+            "Optimized cache layers by copying requirements.txt first.",
             "Implementing a non-root 'appuser' for enhanced security.",
             "Added a basic HEALTHCHECK for liveness monitoring."
         ]
     elif runtime == "node":
         dockerfile = _suggest_node()
         explanation += [
-            "Using multi-stage build to keep node_modules lean in the final image.",
             "Utilizing node:iron-slim (LTS) for stability and small footprint.",
             "Running as the built-in 'node' non-root user.",
             "Added HEALTHCHECK targeting the application port."
@@ -80,24 +79,21 @@ def _get_dockerignore(runtime):
     return "\n".join(common)
 
 def _suggest_python():
-    return """# Stage 1: Build
-FROM python:3.11-slim AS builder
+    return """FROM python:3.11-slim
 
 WORKDIR /app
+
+# Optimize Python performance
+ENV PYTHONDONTWRITEBYTECODE=1 \\
+    PYTHONUNBUFFERED=1
+
 COPY requirements.txt .
-# Modern: Use cache mount for pip
+
+# Use cache mount and clean up in one layer
 RUN --mount=type=cache,target=/root/.cache/pip \\
-    pip install --user -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt
 
-# Stage 2: Runtime
-FROM python:3.11-slim AS runtime
-
-WORKDIR /app
-COPY --from=builder /root/.local /home/appuser/.local
 COPY . .
-
-# Ensure scripts in .local/bin are in PATH
-ENV PATH=/home/appuser/.local/bin:$PATH
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
@@ -109,20 +105,16 @@ CMD ["python", "app.py"]
 """.strip()
 
 def _suggest_node():
-    return """# Stage 1: Build
-FROM node:20-slim AS builder
+    return """FROM node:20-slim
 
 WORKDIR /app
+
 COPY package*.json ./
-# Modern: Use cache mount for npm
+
+# Install production dependencies and clean cache
 RUN --mount=type=cache,target=/root/.npm \\
-    npm ci --only=production
+    npm ci --only=production && npm cache clean --force
 
-# Stage 2: Runtime
-FROM node:20-slim AS runtime
-
-WORKDIR /app
-COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 
 # Use built-in node user

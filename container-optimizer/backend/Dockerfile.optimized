@@ -1,0 +1,49 @@
+FROM python:3.11-slim
+
+# Set environment variables for optimization
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/home/appuser/.local/bin:$PATH"
+
+WORKDIR /app
+
+# 1. Install system dependencies (including Trivy for the app's functionality)
+# We clean up in the same layer to keep the image lean.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    ca-certificates \
+    && curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin \
+    && apt-get purge -y --auto-remove curl gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Install Python dependencies
+# In a real scenario, we'd COPY requirements.txt first.
+# Here we'll install them directly for the demonstration.
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    docker \
+    python-dotenv \
+    requests \
+    pydantic \
+    gunicorn
+
+# 3. Security: Create non-root user
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+# 4. Copy application code
+COPY . .
+RUN chown -R appuser:appuser /app
+
+# 5. Switch to non-root user
+USER appuser
+
+# 6. Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

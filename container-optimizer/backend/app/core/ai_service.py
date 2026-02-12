@@ -46,19 +46,24 @@ DO NOT include any conversation or markdown outside the JSON object.
 CRITICAL MANDATES for logic accuracy:
 1. TRUTHFULNESS: 
    - NEVER suggest a tool (curl, wget, ping) in a CMD or HEALTHCHECK unless you explicitly install it in the SAME stage using a package manager (apt/apk).
-   - NEVER assume files exist unless shown in the original Dockerfile or build commands.
-2. CONSISTENCY:
-   - Match the base image family (Debian/Ubuntu vs Alpine). If the original is Debian, the optimized version MUST stay Debian-based.
-   - TAG ACCURACY: Use `python:3.11-slim-bookworm` or `node:20-slim`. 
-   - IMPORTANT: For Nginx, Redis, Postgres, and MySQL, DO NOT add '-slim' as it often doesn't exist for these; use the stable version tag (e.g., `nginx:1.27.2`) or the `-alpine` variant if size is the priority.
-3. EXPERT REASONING:
-   - Your 'explanation' must provide technical 'Why' (e.g., "Reduced image size by 40% using multi-stage builds and excluding build-time dependencies like gcc").
+   - Prefer native healthchecks (e.g., Python `socket` module) over installing external tools whenever possible.
+2. CONSISTENCY & TAGS:
+   - Match the base image family (Debian vs Alpine). If the original is Debian, stay Debian-based (use `-slim-bookworm`).
+   - For Nginx, Redis, Postgres, and MySQL, use stable version tags (e.g., `nginx:1.27.2`) or `-alpine` if size is priority.
+3. CACHING & PERFORMANCE:
+   - MANDATE: Always `COPY` dependency files (`requirements.txt`, `package.json`, `go.mod`) and run the install command BEFORE doing `COPY . .`.
+   - ARCHITECTURE: Suggest Multi-Stage builds ONLY if it provides clear benefits (e.g., reducing final image size by >50MB, removing build-only toolchains like GCC/Maven, or securing secrets). 
+   - ARCHITECTURE: For simple script-based applications (e.g., small Python/Node apps) with no complex build steps, use a SINGLE-STAGE optimized build.
+   - ARCHITECTURE: If using Single-Stage, ensure aggressive cleanup in the same `RUN` layer (e.g., `apt-get purge`, `rm -rf /var/lib/apt/lists/*`) to keep it lean.
 4. SECURITY:
-   - Always implement a non-root USER with proper permissions.
+   - Always implement a non-root USER. 
+   - Ensure the user has explicit ownership of the application directory: `chown -R appuser:appgroup /app`.
    - Use fixed tags. NEVER use 'latest'.
-5. DEDUPLICATION TAGS:
-   - For every security warning, you MUST prefix it with a technical ID in brackets if applicable. 
-   - Examples: `[RUN_AS_ROOT]`, `[NO_VERSION_PINNING]`, `[MISSING_HEALTHCHECK]`, `[SECRET_EXPOSURE]`, `[HEAVY_IMAGE]`.
+5. OUTPUT CONTENT:
+   - Your 'explanation' must provide technical 'Why' (e.g., "Used single-stage with aggressive cleanup as multi-stage didn't offer significant size reduction").
+   - Your 'dockerignore' MUST include common bloat: `venv/`, `.git/`, `__pycache__/`, `.env`, and OS-specific files.
+6. DEDUPLICATION TAGS:
+   - Prefix security warnings with: `[RUN_AS_ROOT]`, `[NO_VERSION_PINNING]`, `[MISSING_HEALTHCHECK]`, `[SECRET_EXPOSURE]`, `[HEAVY_IMAGE]`.
 """
 
     payload = {
