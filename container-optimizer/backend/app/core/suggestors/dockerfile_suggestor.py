@@ -9,7 +9,7 @@ def suggest_dockerfile(image_analysis, runtime_analysis, misconfigs):
     if runtime == "python":
         dockerfile = _suggest_python()
         explanation += [
-            "Using a slim base image to reduce initial footprint.",
+            "Using multi-stage build to separate build dependencies from the production runtime.",
             "Optimized cache layers by copying requirements.txt first.",
             "Implementing a non-root 'appuser' for enhanced security.",
             "Added a basic HEALTHCHECK for liveness monitoring."
@@ -17,6 +17,7 @@ def suggest_dockerfile(image_analysis, runtime_analysis, misconfigs):
     elif runtime == "node":
         dockerfile = _suggest_node()
         explanation += [
+            "Using multi-stage build to keep the production image lean and free of devDependencies.",
             "Utilizing node:iron-slim (LTS) for stability and small footprint.",
             "Running as the built-in 'node' non-root user.",
             "Added HEALTHCHECK targeting the application port."
@@ -79,23 +80,30 @@ def _get_dockerignore(runtime):
     return "\n".join(common)
 
 def _suggest_python():
-    return """FROM python:3.11-slim
+    return """# Stage 1: Builder
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+COPY requirements.txt .
+
+# Install dependencies into a local directory
+RUN --mount=type=cache,target=/root/.cache/pip \\
+    pip install --user --no-cache-dir -r requirements.txt
+
+# Stage 2: Runtime
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Optimize Python performance
+# Copy installed dependencies from builder
+COPY --from=builder /root/.local /home/appuser/.local
+COPY --chown=appuser:appuser . .
+
 ENV PYTHONDONTWRITEBYTECODE=1 \\
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \\
+    PATH="/home/appuser/.local/bin:$PATH"
 
-COPY requirements.txt .
-
-# Use cache mount and clean up in one layer
-RUN --mount=type=cache,target=/root/.cache/pip \\
-    pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+RUN useradd -m -u 1000 appuser
 USER appuser
 
 HEALTHCHECK --interval=30s --timeout=3s \\
@@ -105,25 +113,29 @@ CMD ["python", "app.py"]
 """.strip()
 
 def _suggest_node():
-    return """FROM node:20-slim
+    return """# Stage 1: Builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
-
 COPY package*.json ./
+RUN npm ci
 
-# Install production dependencies and clean cache
-RUN --mount=type=cache,target=/root/.npm \\
-    npm ci --only=production && npm cache clean --force
+# Stage 2: Runtime
+FROM node:20-slim
 
-COPY . .
+WORKDIR /app
+ENV NODE_ENV=production
 
-# Use built-in node user
+# Copy only production node_modules
+COPY --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node . .
+
 USER node
 
 HEALTHCHECK --interval=30s --timeout=3s \\
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => { if (r.statusCode !== 200) process.exit(1); })"
+  CMD curl -f http://localhost:3000/health || exit 1
 
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
 """.strip()
 
 def _suggest_go():

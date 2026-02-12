@@ -17,7 +17,7 @@ def optimize_with_ai(image_context: dict, dockerfile_content: str = None):
 
     # Construct the prompt
     prompt = f"""
-You are an expert Docker and DevSecOps engineer. Your task is to analyze a Docker image/Dockerfile and provide an industry-ready, SECURE, and OPTIMIZED multi-stage replacement.
+You are an expert Docker and DevSecOps engineer. Your task is to analyze a Docker image/Dockerfile and provide an industry-ready, SECURE, and OPTIMIZED replacement.
 
 ### CONTEXT:
 Image: {image_context.get('image', 'unknown')}
@@ -50,20 +50,20 @@ CRITICAL MANDATES for logic accuracy:
 2. CONSISTENCY & TAGS:
    - Match the base image family (Debian vs Alpine). If the original is Debian, stay Debian-based (use `-slim-bookworm`).
    - For Nginx, Redis, Postgres, and MySQL, use stable version tags (e.g., `nginx:1.27.2`) or `-alpine` if size is priority.
-3. CACHING & PERFORMANCE:
-   - MANDATE: Always `COPY` dependency files (`requirements.txt`, `package.json`, `go.mod`) and run the install command BEFORE doing `COPY . .`.
-   - ARCHITECTURE: Suggest Multi-Stage builds ONLY if it provides clear benefits (e.g., reducing final image size by >50MB, removing build-only toolchains like GCC/Maven, or securing secrets). 
-   - ARCHITECTURE: For simple script-based applications (e.g., small Python/Node apps) with no complex build steps, use a SINGLE-STAGE optimized build.
-   - ARCHITECTURE: If using Single-Stage, ensure aggressive cleanup in the same `RUN` layer (e.g., `apt-get purge`, `rm -rf /var/lib/apt/lists/*`) to keep it lean.
+3. ARCHITECTURE & PERFORMANCE:
+   - MANDATE: Use Multi-Stage builds ONLY when a complex build/compilation step is present (e.g., `npm run build`, `go build`, `mvn package`) or if removing compilers (GCC) saves >80MB.
+   - MANDATE: For simple runner scripts (e.g., Python/Node apps with no compilation/build phase), you MUST use a SINGLE-STAGE optimized build. Perform all installs and aggressive CLEANUP (apt-get purge, rm cache) in the same `RUN` layer to keep it lean.
+   - MANDATE: For web/app frameworks, the final stage MUST use a production runner (e.g., `node server.js`, `gunicorn`, or a static server) and NEVER a dev server (`npm run dev`).
+   - MANDATE: Always `COPY` dependency files (`requirements.txt`, `package.json`, `go.mod`) and install BEFORE doing `COPY . .`.
 4. SECURITY:
    - Always implement a non-root USER. 
-   - Ensure the user has explicit ownership of the application directory: `chown -R appuser:appgroup /app`.
+   - Ensure explicit ownership: Use `COPY --chown=appuser:appgroup . .` or run `chown` AFTER all files are copied to ensure no files remain owned by root.
    - Use fixed tags. NEVER use 'latest'.
 5. OUTPUT CONTENT:
-   - Your 'explanation' must provide technical 'Why' (e.g., "Used single-stage with aggressive cleanup as multi-stage didn't offer significant size reduction").
-   - Your 'dockerignore' MUST include common bloat: `venv/`, `.git/`, `__pycache__/`, `.env`, and OS-specific files.
+   - Your 'explanation' must provide technical 'Why' (e.g., "Used a single-stage build with aggressive layer cleanup because a builder stage adds unnecessary complexity for a simple script").
+   - Your 'dockerignore' MUST include common bloat: `venv/`, `.git/`, `node_modules/`, `__pycache__/`, `.env`.
 6. DEDUPLICATION TAGS:
-   - Prefix security warnings with: `[RUN_AS_ROOT]`, `[NO_VERSION_PINNING]`, `[MISSING_HEALTHCHECK]`, `[SECRET_EXPOSURE]`, `[HEAVY_IMAGE]`.
+   - Prefix security warnings with: `[RUN_AS_ROOT]`, `[NO_VERSION_PINNING]`, `[MISSING_HEALTHCHECK]`, `[SECRET_EXPOSURE]`, `[DEV_SERVER_IN_PROD]`.
 """
 
     payload = {
@@ -87,6 +87,7 @@ CRITICAL MANDATES for logic accuracy:
         
         # Parse the JSON string from the AI response
         ai_response_content = data['choices'][0]['message']['content']
+            
         return json.loads(ai_response_content)
         
     except Exception as e:

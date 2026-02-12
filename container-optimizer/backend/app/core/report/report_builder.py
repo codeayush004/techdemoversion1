@@ -227,10 +227,11 @@ def build_static_report(dockerfile_content: str):
             # Map specific AI warnings to technical resolutions
             rec = "Implemented in the optimized Dockerfile."
             w_low = w_clean.lower()
-            if "root" in w_low: rec = "Add a non-root USER and set appropriate permissions."
-            elif "stage" in w_low: rec = "Use multi-stage builds if significant size reduction or security separation (e.g. build secrets) is required."
+            if "root" in w_low: rec = "Apply a non-root USER and ensure correct file ownership (chown) to prevent privilege escalation."
+            elif "stage" in w_low: rec = "Use multi-stage builds to isolate build-time dependencies (compilers, devDependencies) from the final production runtime."
             elif "secret" in w_low or "token" in w_low: rec = "Use build secrets or environment variables instead of hardcoding."
             elif "tool" in w_low or "install" in w_low: rec = "Clean package manager caches (apt/apk cleanup) in the same layer."
+            elif "dev" in w_low and "server" in w_low: rec = "Use a production runner (e.g. gunicorn, node index.js) instead of a development server."
             
             raw_findings.append({
                 "id": ai_tag,
